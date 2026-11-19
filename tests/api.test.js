@@ -28,7 +28,15 @@ test('HTTP API и PostgreSQL 18', async t => {
     if (mode === 'bad_write') rows.push({ appid: 20, title: 'Rollback', minutes: -1, icon: null });
     return rows;
   }
-  const { app, store } = createApp({pool,secret:randomBytes(32).toString('hex'),origin:'http://localhost:3000',getLibrary});
+  const origin='http://localhost:3000';
+  let providerAccepts=true;
+  const steamLoginFetch=async (url, options)=>{
+    assert.equal(url,'https://steamcommunity.com/openid/login');
+    assert.equal(options.method,'POST');
+    assert.equal(options.body.get('openid.mode'),'check_authentication');
+    return new Response('is_valid:'+providerAccepts+'\n');
+  };
+  const { app, store } = createApp({pool,secret:randomBytes(32).toString('hex'),origin,getLibrary,steamLoginFetch});
   const server = app.listen(0,'127.0.0.1');
   await once(server,'listening');
   const base = 'http://127.0.0.1:' + server.address().port + '/api';
@@ -164,6 +172,42 @@ test('HTTP API и PostgreSQL 18', async t => {
       await a('DELETE','/collection/'+manualId,204);
       await a('GET','/collection/'+manualId,404);
       assert.equal((await a('GET','/statistics',200)).totalPlaytimeMinutes,150);
+    });
+    await t.test('вход Steam открывает собственную коллекцию после ответа провайдера', async ()=>{
+      const steamId='76561198000000000';
+      async function login() {
+        const start=await fetch(base+'/auth/steam',{redirect:'manual'});
+        assert.equal(start.status,302);
+        const cookie=start.headers.get('set-cookie').split(';')[0];
+        const provider=new URL(start.headers.get('location'));
+        assert.equal(provider.origin,'https://steamcommunity.com');
+        const callback=new URL(provider.searchParams.get('openid.return_to'));
+        for(const [name,value] of Object.entries({
+          ns:provider.searchParams.get('openid.ns'),mode:'id_res',op_endpoint:provider.origin+provider.pathname,
+          claimed_id:'https://steamcommunity.com/openid/id/'+steamId,identity:'https://steamcommunity.com/openid/id/'+steamId,
+          return_to:callback.href, response_nonce:new Date().toISOString().slice(0,19)+'Zexample',
+          assoc_handle:'test-association',sig:'test-only',signed:'op_endpoint,claimed_id,identity,return_to,response_nonce,assoc_handle'
+        })) callback.searchParams.set('openid.'+name,value);
+        const reply=await fetch(base+'/auth/steam/callback'+callback.search,{redirect:'manual',headers:{cookie}});
+        assert.equal(reply.status,302);
+        return reply;
+      }
+      providerAccepts=false;
+      assert.equal((await login()).headers.get('location'),'/?steamLogin=steam_login_failed');
+      providerAccepts=true;
+      let previousId;
+      for(let visit=0;visit<2;visit++){
+        const reply=await login();
+        assert.equal(reply.headers.get('location'),'/?steamImport=1#collection');
+        const headers={cookie:reply.headers.get('set-cookie').split(';')[0]};
+        const account=await (await fetch(base+'/auth/me',{headers})).json();
+        assert.equal(account.steamId,steamId);
+        assert.notEqual(account.id,userId);
+        assert.equal(account.email,null);
+        if(visit) assert.equal(account.id,previousId);
+        previousId=account.id;
+        assert.equal((await (await fetch(base+'/collection',{headers})).json()).total,0);
+      }
     });
     await t.test('недавние игры упорядочены по последнему запуску текущего пользователя', async () => {
       mode='ok';

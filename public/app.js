@@ -256,3 +256,18 @@ $('#search').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(filte
 window.addEventListener('hashchange',()=>{if(user) refresh().catch(feedback);});
 authLayout();
 try {user=await data.me();layout();} catch(error){layout();if(error.status!==401) feedback(error);}
+if (!data.demo) {
+  const url=new URL(location.href);
+  const loginResult=url.searchParams.get('steamLogin');
+  if (user && url.searchParams.get('steamImport')==='1') $('#steam-open').click();
+  if (loginResult) {
+    const messages={steam_cancelled:'Вход через Steam отменён.',steam_unavailable:'Steam временно недоступен. Попробуйте позже.'};
+    authForm.querySelector('.error').textContent=Object.hasOwn(messages,loginResult)
+      ? messages[loginResult] : 'Не удалось подтвердить вход через Steam. Попробуйте ещё раз.';
+  }
+  if (loginResult || url.searchParams.has('steamImport')) {
+    url.searchParams.delete('steamLogin');
+    url.searchParams.delete('steamImport');
+    history.replaceState(null,'',url);
+  }
+}

@@ -2,7 +2,8 @@ import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
-import { ApiError, fields, invalid, string } from './lib.js';
+import { ApiError, fields, invalid, string, transaction } from './lib.js';
+import { steamSignInUrl, verifySteamLogin } from './integrations/steam-login.js';
 
 const derive = promisify(scrypt);
 const options = { N: 32768, r: 8, p: 3, maxmem: 64 * 1024 * 1024 };
@@ -27,12 +28,40 @@ export function requireUser(req, res, next) {
   next();
 }
 
-export function authRoutes(pool) {
+export function authRoutes(pool, origin, steamLoginFetch) {
   const router = Router();
   const limiter = rateLimit({
     windowMs: 15 * 60_000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false,
     skipSuccessfulRequests: true,
     message: { error: { code: 'auth_rate_limit', message: 'Слишком много попыток. Попробуйте позже.' } }
+  });
+  router.get('/steam', limiter, async (req, res) => {
+    if (req.session.userId) return res.redirect('/#collection');
+    const state = randomBytes(32).toString('hex');
+    req.session.steamLogin = {state, started:Date.now()};
+    await promisify(req.session.save.bind(req.session))();
+    res.redirect(steamSignInUrl(origin,state));
+  });
+  router.get('/steam/callback', limiter, async (req, res) => {
+    res.set('Referrer-Policy','no-referrer');
+    try {
+      const challenge = req.session.steamLogin;
+      const steamId = await verifySteamLogin(req.query,challenge,origin,steamLoginFetch);
+      const id = await transaction(pool, async db => {
+        // Consume the browser-bound challenge exactly once, including concurrent callbacks.
+        const used = await db.query("DELETE FROM sessions WHERE sid=$1 AND sess->'steamLogin'->>'state'=$2", [req.sessionID,challenge.state]);
+        if (!used.rowCount) throw new ApiError(401,'steam_login_failed','Повторите вход.');
+        const { rows } = await db.query(`INSERT INTO users(steam_login_id,steam_id,display_name)
+          VALUES($1,$1,$2) ON CONFLICT(steam_login_id) DO UPDATE SET steam_login_id=excluded.steam_login_id
+          RETURNING id`, [steamId,'Игрок Steam · '+steamId.slice(-4)]);
+        return rows[0].id;
+      });
+      await startSession(req,id);
+      res.redirect('/?steamImport=1#collection');
+    } catch(error) {
+      if (!(error instanceof ApiError)) throw error;
+      res.redirect('/?steamLogin='+encodeURIComponent(error.code));
+    }
   });
   router.post('/register', limiter, async (req, res) => {
     const { email, password } = credentials(req.body, true);

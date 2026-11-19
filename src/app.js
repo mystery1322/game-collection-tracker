@@ -8,7 +8,7 @@ import { statistics } from './repositories/collection.js';
 import { setSource, synchronize, syncStatus } from './services/steam-sync.js';
 import { ApiError, fields, invalid } from './lib.js';
 
-export function createApp({ pool, secret, origin, getLibrary }) {
+export function createApp({ pool, secret, origin, getLibrary, steamLoginFetch }) {
   const app = express();
   app.disable('x-powered-by');
   app.use((req, res, next) => {
@@ -31,7 +31,7 @@ export function createApp({ pool, secret, origin, getLibrary }) {
     await pool.query('SELECT 1 FROM user_statistics LIMIT 0');
     res.json({ status: 'ok' });
   });
-  app.use('/api/auth', authRoutes(pool));
+  app.use('/api/auth', authRoutes(pool, origin, steamLoginFetch));
   app.use('/api', requireUser);
   app.use('/api/collection', collectionRoutes(pool));
   app.get('/api/statistics', async (req, res) => res.json(await statistics(pool, req.session.userId)));
