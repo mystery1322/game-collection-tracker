@@ -88,6 +88,15 @@ test('HTTP API и PostgreSQL 18', async t => {
       assert.deepEqual(page.items,[]);
       assert.equal(page.total,1);
     });
+    await t.test('следующий шаг виден после повторного входа и завершается отдельно от заметки', async () => {
+      await a('PATCH','/collection/'+manualId,200,{nextStep:'Слот 3 у лифта'});
+      await a('POST','/auth/logout',204);
+      await a('POST','/auth/login',200,{email:first.email,password:first.password});
+      assert.equal((await a('GET','/collection',200)).items[0].nextStep,'Слот 3 у лифта');
+      await b('PATCH','/collection/'+manualId,404,{nextStep:''});
+      const cleared = await a('PATCH','/collection/'+manualId,200,{nextStep:''});
+      assert.deepEqual([cleared.nextStep,cleared.notes,cleared.status],['','Финал','completed']);
+    });
     await t.test('первый импорт, ограничение частоты и закрепление источника', async () => {
       await a('POST','/steam/sync',400);
       await a('PUT','/steam/source',400,{steamId:'123'});
