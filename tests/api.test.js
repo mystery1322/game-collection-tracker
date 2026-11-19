@@ -165,6 +165,39 @@ test('HTTP API и PostgreSQL 18', async t => {
       await a('GET','/collection/'+manualId,404);
       assert.equal((await a('GET','/statistics',200)).totalPlaytimeMinutes,150);
     });
+    await t.test('недавние игры упорядочены по последнему запуску текущего пользователя', async () => {
+      mode='ok';
+      library=[
+        {appid:10,name:'Долгая игра',playtime_forever:900,rtime_last_played:1700000000},
+        {appid:21,name:'Короткая игра',playtime_forever:5,rtime_last_played:1710000000},
+        {appid:22,name:'Без даты',playtime_forever:15,rtime_last_played:0}
+      ];
+      const manual=await a('POST','/collection',201,{title:'Игра вручную'});
+      await ageRun();
+      await a('POST','/steam/sync',200);
+      assert.equal((await a('GET','/statistics',200)).hasSteamImport,true);
+      assert.equal((await b('GET','/statistics',200)).hasSteamImport,false);
+      const ordered=await a('GET','/collection?sort=recent',200);
+      assert.deepEqual(ordered.items.map(g=>g.title),['Короткая игра','Долгая игра',manual.title,'Без даты']);
+      assert.equal(ordered.items[2].lastPlayedAt,null);
+      assert.equal(ordered.items[3].lastPlayedAt,null);
+      library[0].rtime_last_played=1720000000;
+      delete library[1].rtime_last_played;
+      await ageRun();
+      await a('POST','/steam/sync',200);
+      const recent=await a('GET','/collection?sort=recent&pageSize=1',200);
+      assert.equal(recent.items[0].title,'Долгая игра');
+      assert.equal(Date.parse(recent.items[0].lastPlayedAt),1720000000000);
+      const next=await a('GET','/collection?sort=recent&pageSize=1&page=2',200);
+      assert.equal(Date.parse(next.items[0].lastPlayedAt),1710000000000);
+      assert.equal((await a('GET','/collection/'+steamEntry,200)).notes,'Моя заметка');
+      await a('PATCH','/collection/'+manual.id,400,{lastPlayedAt:'2020-01-01'});
+      library[0].rtime_last_played=1680000000;
+      await b('PUT','/steam/source',200,{steamId:'76561198000000000'});
+      await b('POST','/steam/sync',200);
+      assert.equal(Date.parse((await a('GET','/collection/'+steamEntry,200)).lastPlayedAt),1720000000000);
+      assert.equal(Date.parse((await b('GET','/collection?sort=recent',200)).items[0].lastPlayedAt),1680000000000);
+    });
   } finally {
     await new Promise(resolve=>server.close(resolve));
     await store.close();

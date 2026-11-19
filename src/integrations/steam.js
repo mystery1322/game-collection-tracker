@@ -18,7 +18,10 @@ export function parseLibrary(payload) {
     seen.add(game.appid);
     const icon = /^[a-f\d]{40}$/i.test(game.img_icon_url)
       ? `https://media.steampowered.com/steamcommunity/public/images/apps/${game.appid}/${game.img_icon_url}.jpg` : null;
-    return { appid: game.appid, title: game.name.trim(), minutes: game.playtime_forever, icon };
+    const timestamp = game.rtime_last_played;
+    const playedAt = Number.isInteger(timestamp) && timestamp > 0 && timestamp <= 4294967295
+      ? new Date(timestamp * 1000).toISOString() : null;
+    return { appid: game.appid, title: game.name.trim(), minutes: game.playtime_forever, icon, played_at: playedAt };
   });
 }
 

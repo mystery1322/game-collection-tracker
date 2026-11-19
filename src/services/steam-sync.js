@@ -56,16 +56,17 @@ export async function synchronize(pool, user, getLibrary) {
       const active = await db.query("SELECT id FROM steam_sync_runs WHERE id=$1 AND status='running' FOR UPDATE", [run.id]);
       if (!active.rowCount) throw new ApiError(409, 'sync_interrupted', 'Попытка импорта уже завершена.');
       const counts = await db.query(`WITH incoming AS (
-        SELECT * FROM jsonb_to_recordset($2::jsonb) AS x(appid bigint,title text,icon text,minutes int)
+        SELECT * FROM jsonb_to_recordset($2::jsonb) AS x(appid bigint,title text,icon text,minutes int,played_at timestamptz)
       ), catalog AS (
         INSERT INTO games(steam_app_id,title,icon_url)
         SELECT appid,title,icon FROM incoming ORDER BY appid
         ON CONFLICT(steam_app_id) DO UPDATE SET title=excluded.title,icon_url=coalesce(excluded.icon_url,games.icon_url)
         RETURNING id,steam_app_id
       ), collection AS (
-        INSERT INTO user_games(user_id,game_id,playtime_minutes)
-        SELECT $1,c.id,i.minutes FROM catalog c JOIN incoming i ON i.appid=c.steam_app_id ORDER BY c.id
-        ON CONFLICT(user_id,game_id) DO UPDATE SET playtime_minutes=excluded.playtime_minutes
+        INSERT INTO user_games(user_id,game_id,playtime_minutes,last_played_at)
+        SELECT $1,c.id,i.minutes,i.played_at FROM catalog c JOIN incoming i ON i.appid=c.steam_app_id ORDER BY c.id
+        ON CONFLICT(user_id,game_id) DO UPDATE SET playtime_minutes=excluded.playtime_minutes,
+          last_played_at=greatest(user_games.last_played_at,excluded.last_played_at)
         RETURNING old.id IS NULL AS added
       ) SELECT count(*) FILTER(WHERE added)::int AS added,count(*) FILTER(WHERE NOT added)::int AS updated FROM collection`,
         [user,JSON.stringify(library)]);

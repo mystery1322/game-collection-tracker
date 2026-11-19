@@ -39,7 +39,7 @@ export function collectionRoutes(pool) {
     const { q = '', status = null, sort = 'title', direction = sort === 'title' ? 'asc' : 'desc' } = req.query;
     string(q, 255, 'Поиск', 0);
     if (status !== null && !statuses.includes(status)) invalid('Неизвестный статус.');
-    if (!['title','time','rating'].includes(sort) || !['asc','desc'].includes(direction)) invalid('Неизвестная сортировка.');
+    if (!['title','time','rating','recent'].includes(sort) || !['asc','desc'].includes(direction)) invalid('Неизвестная сортировка.');
     res.json(await list(pool, req.session.userId, { q, status, sort, direction,
       page: pageNumber(req.query.page ?? '1', 2147483647), pageSize: pageNumber(req.query.pageSize ?? '20', 100) }));
   });
