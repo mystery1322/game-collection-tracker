@@ -1,0 +1,198 @@
+import * as data from './data.js';
+
+const $ = selector => document.querySelector(selector);
+const form = $('#edit-form');
+const edit = form.elements;
+const authForm = $('#auth-form');
+const dialog = $('#editor');
+const params = {q:'',status:'',sort:'title',page:1,pageSize:12};
+let user, editing, stepOnly, registering=false, request=0, searchTimer;
+
+function el(tag,text,className) {
+  const node=document.createElement(tag);
+  if (text != null) node.textContent=text;
+  if (className) node.className=className;
+  return node;
+}
+function button(text,action,css) {
+  const node=el('button',text,css);
+  node.type='button';
+  node.addEventListener('click',action);
+  return node;
+}
+function feedback(error) {
+  if (error.status===401 && user) {
+    user=null;
+    dialog.close();
+    layout();
+    authForm.querySelector('.error').textContent='Войдите снова, чтобы продолжить.';
+  } else {
+    $('#fatal').textContent=error.message || 'Не удалось загрузить коллекцию.';
+  }
+}
+function hours(minutes) {
+  return new Intl.NumberFormat('ru-RU',{maximumFractionDigits:1}).format(minutes/60)+' ч';
+}
+function today() {
+  const date=new Date();
+  return [date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),String(date.getDate()).padStart(2,'0')].join('-');
+}
+for (const [code,label] of Object.entries(data.statuses)) {
+  $('#filter').add(new Option(label,code));
+  edit.status.add(new Option(label,code));
+}
+function layout() {
+  $('#auth').hidden=Boolean(user);
+  $('#workspace').hidden=!user;
+  $('#navigation').hidden=!user;
+  $('#logout').hidden=!user || data.demo;
+  $('#identity').textContent=data.demo?'Демо · в этом браузере':user?.displayName || '';
+  $('#identity').classList.toggle('demo',data.demo);
+  $('#fatal').textContent='';
+  if (user) refresh().catch(feedback);
+}
+function authLayout() {
+  $('#name-label').hidden=!registering;
+  authForm.elements.displayName.required=registering;
+  authForm.elements.password.minLength=registering?8:1;
+  authForm.elements.password.autocomplete=registering?'new-password':'current-password';
+  $('#auth-title').textContent=registering?'Регистрация':'Вход';
+  $('#auth-submit').textContent=registering?'Создать аккаунт':'Войти';
+  $('#auth-toggle').textContent=registering?'Уже есть аккаунт':'Создать аккаунт';
+  authForm.querySelector('.error').textContent='';
+}
+$('#auth-toggle').onclick=()=>{ registering=!registering; authLayout(); };
+authForm.onsubmit=async event=>{
+  event.preventDefault();
+  const fields=Object.fromEntries(new FormData(authForm));
+  if (!registering) delete fields.displayName;
+  $('#auth-submit').disabled=true;
+  try { user=await data.auth(registering,fields); authForm.reset(); layout(); }
+  catch(error) { authForm.querySelector('.error').textContent=error.message; }
+  finally { $('#auth-submit').disabled=false; }
+};
+$('#logout').onclick=async ()=>{
+  try { await data.logout(); user=null; params.page=1; $('#cards').replaceChildren(); layout(); }
+  catch(error){feedback(error);}
+};
+
+function card(game) {
+  const article=el('article',null,'card');
+  const cover=el('div',null,'cover');
+  const mono=el('span',game.title.slice(0,2).toUpperCase(),'monogram');
+  mono.setAttribute('aria-hidden','true');
+  cover.append(mono);
+  if (/^\d+$/.test(game.steamAppId)) {
+    const image=el('img');
+    image.alt='';
+    image.loading='lazy';
+    image.onload=()=>{mono.hidden=true;};
+    image.onerror=()=>image.remove();
+    image.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/'+game.steamAppId+'/header.jpg';
+    cover.append(image);
+  }
+  const body=el('div',null,'card-body');
+  const head=el('div',null,'card-head');
+  head.append(button(game.title,()=>openEditor(game,false),'card-title'),el('span',data.statuses[game.status],'status '+game.status));
+  const step=el('div',null,'step');
+  if (game.nextStep) {
+    const actions=el('div',null,'actions');
+    actions.append(button('Изменить',()=>openEditor(game,true)),button('✓ Готово',async event=>{
+      const target=event.currentTarget; target.disabled=true;
+      try { await data.save(game.id,{nextStep:''}); await refresh(); $('#message').textContent='Подсказка выполнена.'; }
+      catch(error){feedback(error);} finally {target.disabled=false;}
+    }));
+    step.append(el('strong','В следующий раз'),el('p',game.nextStep),actions);
+  } else {
+    step.classList.add('empty');
+    step.append(button('＋ В следующий раз',()=>openEditor(game,true)));
+  }
+  body.append(head,el('p',hours(game.playtimeMinutes)+(game.rating==null?'':' · Оценка '+game.rating+'/10'),'meta'),step);
+  article.append(cover,body);
+  return article;
+}
+function renderStats(s) {
+  const summary=$('#summary');
+  summary.replaceChildren();
+  for (const [value,label] of [[s.totalGames,'Всего игр'],[s.byStatus.playing,'В процессе'],[hours(s.totalPlaytimeMinutes),'Время в играх']]) {
+    const item=el('div'); item.append(el('strong',value),el('span',label)); summary.append(item);
+  }
+  const rows=Object.entries(s.byStatus).map(([key,value])=>[data.statuses[key],value]);
+  rows.push(['Доля пройденных',Math.round(s.completionPercent)+'%'],['Средняя оценка',s.averageRating==null?'Нет оценок':Number(s.averageRating.toFixed(2)).toLocaleString('ru-RU')]);
+  $('#status-stats').replaceChildren(...rows.map(([label,v])=>{const row=el('div',null,'stat-row');row.append(el('span',label),el('strong',v));return row;}));
+  $('#top').replaceChildren(...s.topGames.map(g=>el('li',g.title+' · '+hours(g.playtimeMinutes))));
+  if (!s.topGames.length) $('#top').textContent='Время пока не указано.';
+}
+async function refresh() {
+  const ticket=++request;
+  const statistics=location.hash==='#statistics';
+  $('#page-title').textContent=statistics?'Моя статистика':'Моя коллекция';
+  $('#library').hidden=statistics; $('#stats').hidden=!statistics;
+  for (const a of document.querySelectorAll('nav a')) {
+    if(a.hash===(statistics?'#statistics':'#collection')) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current');
+  }
+  const [s,result]=await Promise.all([data.stats(),statistics?null:data.list(params)]);
+  if (ticket!==request || !user) return;
+  $('#fatal').textContent=''; $('#message').textContent='';
+  renderStats(s);
+  if (!result) return;
+  const last=Math.max(1,Math.ceil(result.total/params.pageSize));
+  if (params.page>last) {params.page=last; return refresh();}
+  $('#cards').replaceChildren(...result.items.map(card));
+  $('#count').textContent=result.total;
+  $('#empty').hidden=Boolean(result.items.length);
+  $('#empty').textContent=params.q||params.status?'По этим условиям игр нет.':'Коллекция пока пуста. Добавьте свою первую игру.';
+  const pages=$('#pages'); pages.replaceChildren();
+  if(last>1){
+    const move=delta=>{params.page+=delta;refresh().catch(feedback);};
+    const prev=button('Назад',()=>move(-1)), next=button('Далее',()=>move(1));
+    prev.disabled=params.page===1; next.disabled=params.page===last;
+    pages.append(prev,el('span',params.page+' / '+last),next);
+  }
+}
+function openEditor(game,onlyStep) {
+  form.reset(); editing=game; stepOnly=onlyStep;
+  $('#edit-title').textContent=onlyStep?game.title:game?'Карточка игры':'Новая игра';
+  $('#game-fields').hidden=onlyStep;
+  $('#remove').hidden=!game||onlyStep;
+  form.querySelector('.error').textContent='';
+  edit.title.value=game?.title || ''; edit.title.disabled=Boolean(game); edit.title.required=!game;
+  edit.status.value=game?.status||'planned'; edit.playtimeMinutes.value=game?.playtimeMinutes??0;
+  edit.playtimeMinutes.disabled=Boolean(game?.steamAppId);
+  edit.rating.value=game?.rating??''; edit.completedAt.value=game?.completedAt||'';
+  edit.completedAt.max=today(); edit.completedAt.disabled=edit.status.value!=='completed';
+  edit.notes.value=game?.notes||''; edit.nextStep.value=game?.nextStep||'';
+  dialog.showModal();
+  (onlyStep?edit.nextStep:game?edit.status:edit.title).focus();
+}
+edit.status.onchange=()=>{ edit.completedAt.disabled=edit.status.value!=='completed';if(edit.completedAt.disabled) edit.completedAt.value=''; };
+$('#add').onclick=()=>openEditor(null,false);
+$('.close').onclick=()=>dialog.close();
+form.onsubmit=async event=>{
+  event.preventDefault(); const submit=form.querySelector('.primary');submit.disabled=true;
+  try {
+    const values={nextStep:edit.nextStep.value.trim()};
+    if(!stepOnly){
+      Object.assign(values,{status:edit.status.value,rating:edit.rating.value===''?null:Number(edit.rating.value),
+        completedAt:edit.completedAt.value||null,notes:edit.notes.value});
+      if(!editing){values.title=edit.title.value.trim();if(!values.title)throw Error('Введите название игры.');}
+      if(!editing?.steamAppId) values.playtimeMinutes=Number(edit.playtimeMinutes.value);
+    }
+    // A full-card edit sends only changed fields, preserving simultaneous unrelated updates.
+    if(editing) for(const key of Object.keys(values)) if(values[key]===editing[key]) delete values[key];
+    if(Object.keys(values).length) await data.save(editing?.id,values);
+    dialog.close(); await refresh(); $('#message').textContent='Сохранено.';
+  }catch(error){if(error.status===401 || !dialog.open) feedback(error);else form.querySelector('.error').textContent=error.message;}
+  finally{submit.disabled=false;}
+};
+$('#remove').onclick=async ()=>{
+  if(!editing || !confirm('Удалить «'+editing.title+'» из коллекции?')) return;
+  try { await data.remove(editing.id); dialog.close(); await refresh(); }
+  catch(error){ if(error.status===401 || !dialog.open)feedback(error);else form.querySelector('.error').textContent=error.message; }
+};
+function filters(){params.q=$('#search').value;params.status=$('#filter').value;params.sort=$('#sort').value;params.page=1;refresh().catch(feedback);}
+$('#filter').onchange=filters; $('#sort').onchange=filters;
+$('#search').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(filters,150);};
+window.addEventListener('hashchange',()=>{if(user) refresh().catch(feedback);});
+authLayout();
+try {user=await data.me();layout();} catch(error){layout();if(error.status!==401) feedback(error);}
