@@ -7,6 +7,8 @@ const authForm = $('#auth-form');
 const dialog = $('#editor');
 const params = {q:'',status:'',sort:'title',page:1,pageSize:12};
 let user, editing, stepOnly, registering=false, request=0, searchTimer;
+let preferredSort = null;
+const sortKey = ()=>'savepoint.collection.sort.'+(data.demo?'demo':user.id);
 
 function el(tag,text,className) {
   const node=document.createElement(tag);
@@ -46,10 +48,16 @@ function layout() {
   $('#workspace').hidden=!user;
   $('#navigation').hidden=!user;
   $('#logout').hidden=!user || data.demo;
+  $('#steam-open').hidden=!user || data.demo;
   $('#identity').textContent=data.demo?'Демо · в этом браузере':user?.displayName || '';
   $('#identity').classList.toggle('demo',data.demo);
   $('#fatal').textContent='';
-  if (user) refresh().catch(feedback);
+  if (user) {
+    let stored;
+    try { stored=localStorage.getItem(sortKey()); } catch {}
+    preferredSort=Array.from($('#sort').options).some(option=>option.value===stored) ? stored : null;
+    refresh().catch(feedback);
+  }
 }
 function authLayout() {
   $('#name-label').hidden=!registering;
@@ -107,7 +115,20 @@ function card(game) {
     step.classList.add('empty');
     step.append(button('＋ В следующий раз',()=>openEditor(game,true)));
   }
-  body.append(head,el('p',hours(game.playtimeMinutes)+(game.rating==null?'':' · Оценка '+game.rating+'/10'),'meta'),step);
+  const meta=el('p',hours(game.playtimeMinutes)+(game.rating==null?'':' · Оценка '+game.rating+'/10'),'meta');
+  if (game.lastPlayedAt) {
+    const played=new Date(game.lastPlayedAt);
+    const day = date=>Date.UTC(date.getFullYear(),date.getMonth(),date.getDate());
+    const daysAgo=(day(new Date())-day(played))/86400000;
+    const when=daysAgo>=0 && daysAgo<=7
+      ? new Intl.RelativeTimeFormat('ru',{numeric:'auto'}).format(-daysAgo,'day')
+      : played.toLocaleDateString('ru-RU',{day:'numeric',month:'short',year:'numeric'});
+    const time=el('time','Играл '+when);
+    time.dateTime=game.lastPlayedAt;
+    time.title=played.toLocaleString('ru-RU');
+    meta.append(el('br'),time);
+  }
+  body.append(head,meta,step);
   article.append(cover,body);
   return article;
 }
@@ -131,7 +152,11 @@ async function refresh() {
   for (const a of document.querySelectorAll('nav a')) {
     if(a.hash===(statistics?'#statistics':'#collection')) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current');
   }
-  const [s,result]=await Promise.all([data.stats(),statistics?null:data.list(params)]);
+  const s=await data.stats();
+  if (ticket!==request || !user) return;
+  params.sort=preferredSort ?? (s.hasSteamImport?'recent':'title');
+  $('#sort').value=params.sort;
+  const result=statistics?null:await data.list(params);
   if (ticket!==request || !user) return;
   $('#fatal').textContent=''; $('#message').textContent='';
   renderStats(s);
@@ -167,6 +192,36 @@ function openEditor(game,onlyStep) {
 }
 edit.status.onchange=()=>{ edit.completedAt.disabled=edit.status.value!=='completed';if(edit.completedAt.disabled) edit.completedAt.value=''; };
 $('#add').onclick=()=>openEditor(null,false);
+const steamDialog=$('#steam-dialog');
+const steamForm=$('#steam-form');
+$('#steam-open').onclick=()=>{
+  steamForm.elements.steamId.value=user.steamId || '';
+  steamForm.querySelector('.error').textContent='';
+  steamDialog.showModal();
+};
+$('#steam-close').onclick=()=>steamDialog.close();
+steamForm.onsubmit=async event=>{
+  event.preventDefault();
+  const submit=steamForm.querySelector('.primary');
+  submit.disabled=true;
+  submit.textContent='Обновляем…';
+  steamForm.querySelector('.error').textContent='';
+  try {
+    const steamId=steamForm.elements.steamId.value;
+    await data.saveSource(steamId);
+    user.steamId=steamId;
+    const result=await data.importSteam();
+    params.page=1;
+    steamDialog.close();
+    await refresh();
+    $('#message').textContent='Импорт завершён. Добавлено: '+result.addedCount+', обновлено: '+result.updatedCount+'.';
+  } catch(error) {
+    if(error.status===401 || !steamDialog.open) {steamDialog.close();feedback(error);}
+    else steamForm.querySelector('.error').textContent=error.message;
+  } finally {
+    submit.disabled=false; submit.textContent='Обновить коллекцию';
+  }
+};
 $('.close').onclick=()=>dialog.close();
 form.onsubmit=async event=>{
   event.preventDefault(); const submit=form.querySelector('.primary');submit.disabled=true;
@@ -191,7 +246,12 @@ $('#remove').onclick=async ()=>{
   catch(error){ if(error.status===401 || !dialog.open)feedback(error);else form.querySelector('.error').textContent=error.message; }
 };
 function filters(){params.q=$('#search').value;params.status=$('#filter').value;params.sort=$('#sort').value;params.page=1;refresh().catch(feedback);}
-$('#filter').onchange=filters; $('#sort').onchange=filters;
+$('#filter').onchange=filters;
+$('#sort').onchange=()=>{
+  preferredSort=$('#sort').value;
+  try { localStorage.setItem(sortKey(),preferredSort); } catch {}
+  filters();
+};
 $('#search').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(filters,150);};
 window.addEventListener('hashchange',()=>{if(user) refresh().catch(feedback);});
 authLayout();

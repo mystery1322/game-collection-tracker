@@ -1,6 +1,12 @@
 export const demo = location.hostname.endsWith('.github.io') || new URLSearchParams(location.search).get('demo') === '1';
 export const statuses = { planned:'Планирую', playing:'Играю', completed:'Пройдена', paused:'Отложена', dropped:'Брошена' };
 const key = 'savepoint.game-collection.demo.v1';
+// Fixed sample activity, including on browsers that already have a saved demo collection.
+const demoActivity = {
+  '367520': '2026-11-19T18:30:00Z', '504230': '2026-11-17T16:00:00Z',
+  '1145360': '2026-11-12T19:00:00Z', '632470': '2026-10-28T15:00:00Z',
+  '620': '2026-09-12T10:00:00Z'
+};
 const examples = [
   ['Celeste','504230','playing',425,9,'Начать главу 4 с последнего костра.'],
   ['Disco Elysium','632470','paused',790,9,'Поговорить с Кимом на балконе.'],
@@ -11,10 +17,10 @@ const examples = [
 ];
 function readGames() {
   const raw = localStorage.getItem(key);
-  if (raw !== null) return JSON.parse(raw);
-  return examples.map(([title,steamAppId,status,playtimeMinutes,rating,nextStep],i)=>({
+  const games = raw !== null ? JSON.parse(raw) : examples.map(([title,steamAppId,status,playtimeMinutes,rating,nextStep],i)=>({
     id:i+1,title,steamAppId,status,playtimeMinutes,rating,nextStep,notes:'',completedAt:null
   }));
+  return games.map(game=>({...game,lastPlayedAt:game.lastPlayedAt ?? demoActivity[game.steamAppId] ?? null}));
 }
 async function api(path, method='GET', body) {
   const options = { method, credentials:'same-origin' };
@@ -35,6 +41,8 @@ async function api(path, method='GET', body) {
 export const me = () => demo ? Promise.resolve({displayName:'Демо'}) : api('/auth/me');
 export const auth = (register,body) => api('/auth/'+(register?'register':'login'),'POST',body);
 export const logout = () => api('/auth/logout','POST');
+export const saveSource = steamId => api('/steam/source','PUT',{steamId});
+export const importSteam = () => api('/steam/sync','POST');
 export async function list({q,status,sort,page,pageSize}) {
   if (!demo) {
     const params = new URLSearchParams({q,sort,page,pageSize});
@@ -42,8 +50,13 @@ export async function list({q,status,sort,page,pageSize}) {
     return api('/collection?'+params);
   }
   const matches = readGames().filter(g=>(!status || g.status===status) && g.title.toLowerCase().includes(q.toLowerCase()));
-  matches.sort((a,b)=>sort==='title' ? a.title.localeCompare(b.title,'ru') :
-    (sort==='time' ? b.playtimeMinutes-a.playtimeMinutes : (b.rating??0)-(a.rating??0)) || a.id-b.id);
+  const compare = {
+    title: (a,b)=>a.title.localeCompare(b.title,'ru'),
+    time: (a,b)=>b.playtimeMinutes-a.playtimeMinutes,
+    rating: (a,b)=>(b.rating??0)-(a.rating??0),
+    recent: (a,b)=>new Date(b.lastPlayedAt)-new Date(a.lastPlayedAt)
+  };
+  matches.sort((a,b)=>compare[sort](a,b) || a.id-b.id);
   return {items:matches.slice((page-1)*pageSize,page*pageSize),total:matches.length};
 }
 export async function stats() {
@@ -51,7 +64,7 @@ export async function stats() {
   const games = readGames();
   const byStatus = Object.fromEntries(Object.keys(statuses).map(k=>[k,games.filter(g=>g.status===k).length]));
   const rated = games.filter(g=>g.rating!==null);
-  return {totalGames:games.length,byStatus,totalPlaytimeMinutes:games.reduce((n,g)=>n+g.playtimeMinutes,0),
+  return {hasSteamImport:true,totalGames:games.length,byStatus,totalPlaytimeMinutes:games.reduce((n,g)=>n+g.playtimeMinutes,0),
     completionPercent:games.length ? byStatus.completed*100/games.length : 0,
     averageRating:rated.length ? rated.reduce((n,g)=>n+g.rating,0)/rated.length : null,
     topGames:games.filter(g=>g.playtimeMinutes>0).sort((a,b)=>b.playtimeMinutes-a.playtimeMinutes).slice(0,5)};
