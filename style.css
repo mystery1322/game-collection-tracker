@@ -29,3 +29,11 @@ dialog{color:var(--ink);background:var(--surface);border:1px solid #545b68;borde
 #achievement-list strong{display:block}
 #achievement-list p{margin:4px 0;color:var(--muted)}
 #achievement-list button{margin-top:6px;font-size:13px}
+.diamond{position:absolute;top:8px;right:8px;z-index:1;padding:4px 9px;border:1px solid #8fddff;border-radius:14px;background:#102431ed;color:#d4f4ff;font-size:13px;font-weight:700}
+#achievement-count progress{display:block;width:100%;height:8px;margin-top:8px;accent-color:var(--lime)}
+#achievement-list li{display:grid;grid-template-columns:48px minmax(0,1fr);gap:12px}
+.achievement-art{position:relative;display:grid;place-items:center;width:48px;height:48px;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:#232b36;color:#aac1d5}
+.achievement-art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.locked .achievement-art img{filter:saturate(.55)}
+#achievement-list small,#achievement-list .earned{display:block;margin-top:4px}
+#achievement-list small{color:#c6dcf0}

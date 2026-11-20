@@ -84,8 +84,40 @@ $('#logout').onclick=async ()=>{
   catch(error){feedback(error);}
 };
 
+const completionCache=new Map();
+function showDiamond(article,perfect) {
+  article.querySelector('.diamond')?.remove();
+  if (!perfect) return;
+  const badge=el('span','💎 100%','diamond');
+  badge.title='Получены все достижения';
+  badge.setAttribute('aria-label',badge.title);
+  article.querySelector('.cover').append(badge);
+}
+async function loadDiamonds(games,cards,ticket) {
+  const pending=games.entries();
+  async function worker() {
+    for (const [i,game] of pending) {
+      if (request!==ticket || !user) return;
+      if (!data.hasAchievements(game)) continue;
+      const key=user.id+':'+game.id;
+      let cached=completionCache.get(key);
+      if (!cached || cached.until<Date.now()) {
+        try {
+          const {perfect}=await data.achievements(game,true);
+          cached={perfect,until:Date.now()+300000};
+        } catch {
+          cached={perfect:false,until:Date.now()+60000};
+        }
+        completionCache.set(key,cached);
+      }
+      showDiamond(cards[i],cached.perfect);
+    }
+  }
+  await Promise.all([worker(),worker(),worker()]);
+}
 function card(game) {
   const article=el('article',null,'card');
+  article.dataset.entry=game.id;
   const cover=el('div',null,'cover');
   const mono=el('span',game.title.slice(0,2).toUpperCase(),'monogram');
   mono.setAttribute('aria-hidden','true');
@@ -165,7 +197,9 @@ async function refresh() {
   if (!result) return;
   const last=Math.max(1,Math.ceil(result.total/params.pageSize));
   if (params.page>last) {params.page=last; return refresh();}
-  $('#cards').replaceChildren(...result.items.map(card));
+  const cards=result.items.map(card);
+  $('#cards').replaceChildren(...cards);
+  void loadDiamonds(result.items,cards,ticket);
   $('#count').textContent=result.total;
   $('#empty').hidden=Boolean(result.items.length);
   $('#empty').textContent=params.q||params.status||params.unplayed?'По этим условиям игр нет.':'Коллекция пока пуста. Добавьте свою первую игру.';
@@ -190,13 +224,35 @@ achievementsPanel.ontoggle=async ()=>{
     if (ticket!==achievementRequest || !dialog.open) return;
     const unlocked=items.filter(item=>item.unlocked).length;
     const prefix=data.demo?'Демопример · ':'';
-    count.textContent=items.length ? prefix+'Получено '+unlocked+' из '+items.length : 'У игры нет достижений.';
+    const percent=items.length ? Math.floor(100*unlocked/items.length) : 0;
+    count.textContent=items.length ? prefix+'Получено '+unlocked+' из '+items.length+' · '+percent+'%' : 'У игры нет достижений.';
+    if (items.length) {
+      const bar=el('progress');
+      bar.max=items.length; bar.value=unlocked;
+      bar.setAttribute('aria-label','Полученные достижения');
+      count.append(bar);
+    }
+    const perfect=items.length>0 && unlocked===items.length;
+    completionCache.set(user.id+':'+editing.id,{perfect,until:Date.now()+300000});
+    const article=document.querySelector('.card[data-entry="'+editing.id+'"]');
+    if (article) showDiamond(article,perfect);
     for (const item of items.sort((a,b)=>Number(a.unlocked)-Number(b.unlocked))) {
       const row=el('li');
-      row.append(el('strong',item.name));
-      if (item.description) row.append(el('p',item.description));
-      if (item.unlocked) row.append(el('span','✓ Получено','earned'));
-      else row.append(button('В следующий раз',()=>{
+      const art=el('span','✦','achievement-art');
+      if (item.icon?.startsWith('https://')) {
+        const img=el('img');
+        img.alt=''; img.loading='lazy'; img.src=item.icon;
+        img.onerror=()=>img.remove();
+        art.append(img);
+      }
+      const details=el('div');
+      row.className=item.unlocked?'unlocked':'locked';
+      row.append(art,details);
+      details.append(el('strong',item.name));
+      if (item.description) details.append(el('p',item.description));
+      if (item.globalPercent!=null) details.append(el('small',item.globalPercent.toLocaleString('ru-RU',{maximumFractionDigits:2})+'% игроков Steam'));
+      if (item.unlocked) details.append(el('span','✓ Получено','earned'));
+      else details.append(button('В следующий раз',()=>{
         edit.nextStep.value=Array.from('Получить достижение «'+item.name+'»').slice(0,240).join('');
         achievementsPanel.open=false;
         edit.nextStep.focus();
@@ -210,7 +266,7 @@ achievementsPanel.ontoggle=async ()=>{
 function openEditor(game,onlyStep) {
   achievementRequest++;
   achievementsPanel.open=false;
-  achievementsPanel.hidden=onlyStep || !game?.steamAppId || (data.demo && game.steamAppId!=='504230');
+  achievementsPanel.hidden=onlyStep || !data.hasAchievements(game);
   form.reset(); editing=game; stepOnly=onlyStep;
   $('#edit-title').textContent=onlyStep?game.title:game?'Карточка игры':'Новая игра';
   $('#game-fields').hidden=onlyStep;
