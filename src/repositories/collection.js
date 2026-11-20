@@ -13,9 +13,10 @@ export async function entry(db, user, id, lock = false) {
   return rows[0];
 }
 
-export async function list(db, user, { q, status, sort, direction, page, pageSize }) {
+export async function list(db, user, { q, status, sort, direction, page, pageSize, unplayed }) {
   const where = `WHERE ug.user_id=$1 AND strpos(lower(g.title), lower($2)) > 0
-                 AND ($3::text IS NULL OR ug.status=$3)`;
+                 AND ($3::text IS NULL OR ug.status=$3)
+                 AND (NOT $6::boolean OR (g.steam_app_id IS NOT NULL AND ug.playtime_minutes=0 AND ug.last_played_at IS NULL))`;
   const column = sortColumns.get(sort);
   const order = direction === 'asc' ? 'ASC' : 'DESC';
   const sql = `WITH matches AS (
@@ -25,7 +26,7 @@ export async function list(db, user, { q, status, sort, direction, page, pageSiz
   ) SELECT (SELECT count(*)::int FROM matches) AS total,
     COALESCE(jsonb_agg(to_jsonb(page_rows) - 'sort_key' ORDER BY sort_key ${order} NULLS LAST, id), '[]') AS items
     FROM page_rows`;
-  const result = await db.query(sql, [user, q, status, pageSize, (page-1)*pageSize]);
+  const result = await db.query(sql, [user, q, status, pageSize, (page-1)*pageSize, unplayed]);
   return { ...result.rows[0], page, pageSize };
 }
 

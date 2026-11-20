@@ -47,7 +47,7 @@ node scripts/setup-local.js
 | POST `/api/auth/login` | `email`, `password`. Возвращает профиль и устанавливает новый сеанс |
 | GET `/api/auth/me` · POST `/api/auth/logout` | Текущий профиль и завершение сеанса |
 | POST `/api/collection` | Обязательное `title`, при желании личные поля. Возвращает карточку и HTTP 201 |
-| GET `/api/collection` | `q`, `status`, `sort=title/time/rating/recent`, `direction=asc/desc`, `page`, `pageSize` (до 100). Ответ содержит `items`, `total`, `page`, `pageSize` |
+| GET `/api/collection` | `q`, `status`, `unplayed=true` (игры Steam с нулевым временем и без даты запуска), `sort=title/time/rating/recent`, `direction=asc/desc`, `page`, `pageSize` (до 100). Ответ содержит `items`, `total`, `page`, `pageSize` |
 | GET · PATCH · DELETE `/api/collection/:id` | Чтение, частичное изменение и удаление. Используется ID записи коллекции. Для чужой игры — HTTP 404 |
 | GET `/api/statistics` | `totalGames`, `byStatus`, `totalPlaytimeMinutes`, `averageRating`, `completionPercent` и до пяти игр в `topGames` |
 | PUT `/api/steam/source` | `steamId` строкой из 17 цифр. Первый успешный импорт закрепляет источник |

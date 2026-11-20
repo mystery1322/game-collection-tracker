@@ -228,10 +228,17 @@ test('HTTP API и PostgreSQL 18', async t => {
       assert.equal(ordered.items[2].lastPlayedAt,null);
       assert.equal(ordered.items[3].lastPlayedAt,null);
       library[0].rtime_last_played=1720000000;
+      library.push({appid:23,name:'Первый запуск впереди',playtime_forever:0});
+      library.push({appid:24,name:'Короткий запуск',playtime_forever:0,rtime_last_played:1600000000});
       delete library[1].rtime_last_played;
       await ageRun();
       await a('POST','/steam/sync',200);
       const recent=await a('GET','/collection?sort=recent&pageSize=1',200);
+      const unplayed=await a('GET','/collection?unplayed=true&status=planned&pageSize=1',200);
+      assert.equal(unplayed.total,1);
+      assert.equal(unplayed.items[0].steamAppId,'23');
+      assert.equal((await a('GET','/collection?unplayed=true&q=xyz',200)).total,0);
+      await a('GET','/collection?unplayed=unknown',400);
       assert.equal(recent.items[0].title,'Долгая игра');
       assert.equal(Date.parse(recent.items[0].lastPlayedAt),1720000000000);
       const next=await a('GET','/collection?sort=recent&pageSize=1&page=2',200);

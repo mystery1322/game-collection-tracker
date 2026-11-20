@@ -35,12 +35,14 @@ function pageNumber(value, max) {
 export function collectionRoutes(pool) {
   const router = Router();
   router.get('/', async (req, res) => {
-    fields(req.query, ['q','status','sort','direction','page','pageSize']);
+    fields(req.query, ['q','status','unplayed','sort','direction','page','pageSize']);
+    const { unplayed = 'false' } = req.query;
+    if (!['true','false'].includes(unplayed)) invalid('Фильтр запусков принимает true или false.');
     const { q = '', status = null, sort = 'title', direction = sort === 'title' ? 'asc' : 'desc' } = req.query;
     string(q, 255, 'Поиск', 0);
     if (status !== null && !statuses.includes(status)) invalid('Неизвестный статус.');
     if (!['title','time','rating','recent'].includes(sort) || !['asc','desc'].includes(direction)) invalid('Неизвестная сортировка.');
-    res.json(await list(pool, req.session.userId, { q, status, sort, direction,
+    res.json(await list(pool, req.session.userId, { q, status, sort, direction, unplayed: unplayed === 'true',
       page: pageNumber(req.query.page ?? '1', 2147483647), pageSize: pageNumber(req.query.pageSize ?? '20', 100) }));
   });
   router.post('/', async (req, res) => {
