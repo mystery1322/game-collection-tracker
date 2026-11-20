@@ -15,6 +15,7 @@
 <p id="fatal" class="error" role="alert"></p>
 </main><footer class="wrap"><span>Savepoint</span><a href="https://github.com/mystery1322/game-collection-tracker">Код проекта на GitHub ↗</a></footer>
 <dialog id="editor"><form id="edit-form"><div class="dialog-head"><h2 id="edit-title"></h2><button type="button" class="close" aria-label="Закрыть">×</button></div><div id="game-fields"><label>Название<input name="title" maxlength="255"></label><div class="pair"><label>Статус<select name="status"></select></label><label>Время, мин<input name="playtimeMinutes" type="number" min="0" max="2147483647"></label></div><div class="pair"><label>Оценка, 1–10<input name="rating" type="number" min="1" max="10"></label><label>Дата завершения<input name="completedAt" type="date"></label></div><label>Личная заметка<textarea name="notes" maxlength="2000" rows="2"></textarea></label></div>
+<details id="achievements" hidden><summary>Достижения Steam</summary><p id="achievement-count" role="status"></p><ul id="achievement-list"></ul></details>
 <label>В следующий раз<textarea name="nextStep" placeholder="Например, загрузить слот 3 у лифта" maxlength="240" rows="2"></textarea></label><p class="error" role="alert"></p><div class="dialog-actions"><button type="button" id="remove" class="quiet" hidden>Удалить игру</button><button class="primary">Сохранить</button></div></form></dialog>
 <dialog id="steam-dialog"><form id="steam-form">
 <div class="dialog-head"><h2>Импорт из Steam</h2><button type="button" id="steam-close" class="close" aria-label="Закрыть">×</button></div>
