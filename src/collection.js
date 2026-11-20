@@ -40,7 +40,7 @@ export function collectionRoutes(pool, getAchievements) {
       WHERE ug.user_id=$1 AND ug.id=$2`, [req.session.userId, positiveId(req.params.id)]);
     if (!source) throw new ApiError(404,'entry_missing','Игра не найдена в вашей коллекции.');
     if (!source.steam_app_id || !source.steam_id) invalid('Достижения доступны для игр, импортированных из Steam.');
-    res.json(await getAchievements(source.steam_id, source.steam_app_id));
+    res.json(await getAchievements(source.steam_id, source.steam_app_id, req.query.view === 'summary'));
   });
   router.get('/', async (req, res) => {
     fields(req.query, ['q','status','unplayed','sort','direction','page','pageSize']);
