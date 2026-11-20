@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import { createApp } from './app.js';
 import { steamLibrary } from './integrations/steam.js';
+import { steamAchievements } from './integrations/achievements.js';
 
 const env = process.env;
 const port = Number(env.PORT || 3000);
@@ -14,7 +15,7 @@ pool.on('error', error => console.error('Соединение PostgreSQL пре�
 try {
   await pool.query('SELECT 1 FROM user_statistics LIMIT 0');
   const { app, store } = createApp({ pool, secret: env.SESSION_SECRET, origin,
-    getLibrary: steamLibrary(env.STEAM_API_KEY) });
+    getLibrary: steamLibrary(env.STEAM_API_KEY), getAchievements: steamAchievements(env.STEAM_API_KEY) });
   const server = app.listen(port, '127.0.0.1', () => console.log('API запущен:', origin + '/api/health'));
   const stop = () => server.close(async () => { await store.close(); await pool.end(); });
   process.once('SIGINT', stop);

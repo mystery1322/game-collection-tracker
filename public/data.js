@@ -43,6 +43,14 @@ export const auth = (register,body) => api('/auth/'+(register?'register':'login'
 export const logout = () => api('/auth/logout','POST');
 export const saveSource = steamId => api('/steam/source','PUT',{steamId});
 export const importSteam = () => api('/steam/sync','POST');
+export async function achievements(game) {
+  if (!demo) return api('/collection/'+game.id+'/achievements');
+  // The public demo uses an illustrative subset from Celeste.
+  return [
+    {name:'Forsaken',description:'Пройти первую главу.',unlocked:true},
+    {name:'Gateway',description:'Пройти вторую главу.',unlocked:false}
+  ];
+}
 export function neverPlayed(game) {
   return Boolean(game.steamAppId) && game.playtimeMinutes === 0 && !game.lastPlayedAt;
 }

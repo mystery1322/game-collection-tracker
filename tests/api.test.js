@@ -38,7 +38,12 @@ test('HTTP API и PostgreSQL 18', async t => {
     assert.equal(options.body.get('openid.mode'),'check_authentication');
     return new Response('is_valid:'+providerAccepts+'\n');
   };
-  const { app, store } = createApp({pool,secret:randomBytes(32).toString('hex'),origin,getLibrary,steamLoginFetch});
+  const getAchievements=async (steamId, appId)=>{
+    assert.equal(steamId,'76561198000000000');
+    assert.equal(String(appId),'10');
+    return [{name:'Начало',description:'',unlocked:false}];
+  };
+  const { app, store } = createApp({pool,secret:randomBytes(32).toString('hex'),origin,getLibrary,getAchievements,steamLoginFetch});
   const server = app.listen(0,'127.0.0.1');
   await once(server,'listening');
   const base = 'http://127.0.0.1:' + server.address().port + '/api';
@@ -117,6 +122,12 @@ test('HTTP API и PostgreSQL 18', async t => {
       steamEntry = (await a('GET','/collection?q=Steam',200)).items[0].id;
       await a('PATCH','/collection/'+steamEntry,400,{playtimeMinutes:1});
       await a('PATCH','/collection/'+steamEntry,200,{status:'playing',rating:9,notes:'Моя заметка'});
+    });
+    await t.test('достижения доступны владельцу записи Steam', async () => {
+      const path='/collection/'+steamEntry+'/achievements';
+      assert.equal((await a('GET',path,200))[0].name,'Начало');
+      await b('GET',path,404);
+      await a('GET','/collection/'+manualId+'/achievements',400);
     });
     await t.test('повторный импорт обновляет минуты и сохраняет личные поля', async () => {
       await ageRun();

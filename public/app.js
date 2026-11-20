@@ -177,7 +177,40 @@ async function refresh() {
     pages.append(prev,el('span',params.page+' / '+last),next);
   }
 }
+const achievementsPanel=$('#achievements');
+let achievementRequest=0;
+achievementsPanel.ontoggle=async ()=>{
+  const ticket=++achievementRequest;
+  if (!achievementsPanel.open || !editing) return;
+  const count=$('#achievement-count'), list=$('#achievement-list');
+  count.textContent='Загружаем достижения…';
+  list.replaceChildren();
+  try {
+    const items=await data.achievements(editing);
+    if (ticket!==achievementRequest || !dialog.open) return;
+    const unlocked=items.filter(item=>item.unlocked).length;
+    const prefix=data.demo?'Демопример · ':'';
+    count.textContent=items.length ? prefix+'Получено '+unlocked+' из '+items.length : 'У игры нет достижений.';
+    for (const item of items.sort((a,b)=>Number(a.unlocked)-Number(b.unlocked))) {
+      const row=el('li');
+      row.append(el('strong',item.name));
+      if (item.description) row.append(el('p',item.description));
+      if (item.unlocked) row.append(el('span','✓ Получено','earned'));
+      else row.append(button('В следующий раз',()=>{
+        edit.nextStep.value=Array.from('Получить достижение «'+item.name+'»').slice(0,240).join('');
+        achievementsPanel.open=false;
+        edit.nextStep.focus();
+      }));
+      list.append(row);
+    }
+  } catch(error) {
+    if (ticket===achievementRequest && dialog.open) count.textContent=error.message;
+  }
+};
 function openEditor(game,onlyStep) {
+  achievementRequest++;
+  achievementsPanel.open=false;
+  achievementsPanel.hidden=onlyStep || !game?.steamAppId || (data.demo && game.steamAppId!=='504230');
   form.reset(); editing=game; stepOnly=onlyStep;
   $('#edit-title').textContent=onlyStep?game.title:game?'Карточка игры':'Новая игра';
   $('#game-fields').hidden=onlyStep;

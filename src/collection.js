@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { fields, invalid, positiveId, string, transaction } from './lib.js';
+import { ApiError, fields, invalid, positiveId, string, transaction } from './lib.js';
 import { entry, list } from './repositories/collection.js';
 
 const statuses = ['planned', 'playing', 'completed', 'paused', 'dropped'];
@@ -32,8 +32,16 @@ function pageNumber(value, max) {
   return Number(value);
 }
 
-export function collectionRoutes(pool) {
+export function collectionRoutes(pool, getAchievements) {
   const router = Router();
+  router.get('/:id/achievements', async (req, res) => {
+    const { rows: [source] } = await pool.query(`SELECT u.steam_id,g.steam_app_id FROM user_games ug
+      JOIN users u ON u.id=ug.user_id JOIN games g ON g.id=ug.game_id
+      WHERE ug.user_id=$1 AND ug.id=$2`, [req.session.userId, positiveId(req.params.id)]);
+    if (!source) throw new ApiError(404,'entry_missing','Игра не найдена в вашей коллекции.');
+    if (!source.steam_app_id || !source.steam_id) invalid('Достижения доступны для игр, импортированных из Steam.');
+    res.json(await getAchievements(source.steam_id, source.steam_app_id));
+  });
   router.get('/', async (req, res) => {
     fields(req.query, ['q','status','unplayed','sort','direction','page','pageSize']);
     const { unplayed = 'false' } = req.query;
