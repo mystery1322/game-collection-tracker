@@ -43,13 +43,18 @@ export const auth = (register,body) => api('/auth/'+(register?'register':'login'
 export const logout = () => api('/auth/logout','POST');
 export const saveSource = steamId => api('/steam/source','PUT',{steamId});
 export const importSteam = () => api('/steam/sync','POST');
-export async function list({q,status,sort,page,pageSize}) {
+export function neverPlayed(game) {
+  return Boolean(game.steamAppId) && game.playtimeMinutes === 0 && !game.lastPlayedAt;
+}
+export async function list({q,status,sort,page,pageSize,unplayed}) {
   if (!demo) {
     const params = new URLSearchParams({q,sort,page,pageSize});
     if(status) params.set('status',status);
+    if(unplayed) params.set('unplayed','true');
     return api('/collection?'+params);
   }
-  const matches = readGames().filter(g=>(!status || g.status===status) && g.title.toLowerCase().includes(q.toLowerCase()));
+  const matches = readGames().filter(g=>(!status || g.status===status) && (!unplayed || neverPlayed(g)) &&
+    g.title.toLowerCase().includes(q.toLowerCase()));
   const compare = {
     title: (a,b)=>a.title.localeCompare(b.title,'ru'),
     time: (a,b)=>b.playtimeMinutes-a.playtimeMinutes,

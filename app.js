@@ -5,7 +5,7 @@ const form = $('#edit-form');
 const edit = form.elements;
 const authForm = $('#auth-form');
 const dialog = $('#editor');
-const params = {q:'',status:'',sort:'title',page:1,pageSize:12};
+const params = {q:'',status:'',unplayed:false,sort:'title',page:1,pageSize:12};
 let user, editing, stepOnly, registering=false, request=0, searchTimer;
 let preferredSort = null;
 const sortKey = ()=>'savepoint.collection.sort.'+(data.demo?'demo':user.id);
@@ -127,6 +127,8 @@ function card(game) {
     time.dateTime=game.lastPlayedAt;
     time.title=played.toLocaleString('ru-RU');
     meta.append(el('br'),time);
+  } else if (data.neverPlayed(game)) {
+    meta.append(el('br'), 'Последний запуск: никогда');
   }
   body.append(head,meta,step);
   article.append(cover,body);
@@ -166,7 +168,7 @@ async function refresh() {
   $('#cards').replaceChildren(...result.items.map(card));
   $('#count').textContent=result.total;
   $('#empty').hidden=Boolean(result.items.length);
-  $('#empty').textContent=params.q||params.status?'По этим условиям игр нет.':'Коллекция пока пуста. Добавьте свою первую игру.';
+  $('#empty').textContent=params.q||params.status||params.unplayed?'По этим условиям игр нет.':'Коллекция пока пуста. Добавьте свою первую игру.';
   const pages=$('#pages'); pages.replaceChildren();
   if(last>1){
     const move=delta=>{params.page+=delta;refresh().catch(feedback);};
@@ -245,7 +247,15 @@ $('#remove').onclick=async ()=>{
   try { await data.remove(editing.id); dialog.close(); await refresh(); }
   catch(error){ if(error.status===401 || !dialog.open)feedback(error);else form.querySelector('.error').textContent=error.message; }
 };
-function filters(){params.q=$('#search').value;params.status=$('#filter').value;params.sort=$('#sort').value;params.page=1;refresh().catch(feedback);}
+function filters(){
+  params.q=$('#search').value;
+  params.status=$('#filter').value;
+  params.unplayed=$('#unplayed').checked;
+  params.sort=$('#sort').value;
+  params.page=1;
+  refresh().catch(feedback);
+}
+$('#unplayed').onchange=filters;
 $('#filter').onchange=filters;
 $('#sort').onchange=()=>{
   preferredSort=$('#sort').value;
