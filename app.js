@@ -85,15 +85,21 @@ $('#logout').onclick=async ()=>{
 };
 
 const completionCache=new Map();
-function showDiamond(article,perfect) {
-  article.querySelector('.diamond')?.remove();
-  if (!perfect) return;
-  const badge=el('span','💎 100%','diamond');
-  badge.title='Получены все достижения';
+function achievementPercent(unlocked,total) {
+  return Math.floor(100*unlocked/total);
+}
+function showAchievementProgress(article,summary) {
+  article.querySelector('.achievement-badge')?.remove();
+  if (!summary?.total) return;
+  const {unlocked,total}=summary;
+  const perfect=unlocked===total;
+  const badge=el('span',(perfect?'💎 ':'')+achievementPercent(unlocked,total)+'%',
+    perfect?'achievement-badge perfect':'achievement-badge');
+  badge.title='Достижения: '+unlocked+' из '+total;
   badge.setAttribute('aria-label',badge.title);
   article.querySelector('.cover').append(badge);
 }
-async function loadDiamonds(games,cards,ticket) {
+async function loadAchievementProgress(games,cards,ticket) {
   const pending=games.entries();
   async function worker() {
     for (const [i,game] of pending) {
@@ -103,14 +109,14 @@ async function loadDiamonds(games,cards,ticket) {
       let cached=completionCache.get(key);
       if (!cached || cached.until<Date.now()) {
         try {
-          const {perfect}=await data.achievements(game,true);
-          cached={perfect,until:Date.now()+300000};
+          const summary=await data.achievements(game,true);
+          cached={summary,until:Date.now()+300000};
         } catch {
-          cached={perfect:false,until:Date.now()+60000};
+          cached={summary:null,until:Date.now()+60000};
         }
         completionCache.set(key,cached);
       }
-      showDiamond(cards[i],cached.perfect);
+      showAchievementProgress(cards[i],cached.summary);
     }
   }
   await Promise.all([worker(),worker(),worker()]);
@@ -199,7 +205,7 @@ async function refresh() {
   if (params.page>last) {params.page=last; return refresh();}
   const cards=result.items.map(card);
   $('#cards').replaceChildren(...cards);
-  void loadDiamonds(result.items,cards,ticket);
+  void loadAchievementProgress(result.items,cards,ticket);
   $('#count').textContent=result.total;
   $('#empty').hidden=Boolean(result.items.length);
   $('#empty').textContent=params.q||params.status||params.unplayed?'По этим условиям игр нет.':'Коллекция пока пуста. Добавьте свою первую игру.';
@@ -224,7 +230,7 @@ achievementsPanel.ontoggle=async ()=>{
     if (ticket!==achievementRequest || !dialog.open) return;
     const unlocked=items.filter(item=>item.unlocked).length;
     const prefix=data.demo?'Демопример · ':'';
-    const percent=items.length ? Math.floor(100*unlocked/items.length) : 0;
+    const percent=items.length ? achievementPercent(unlocked,items.length) : 0;
     count.textContent=items.length ? prefix+'Получено '+unlocked+' из '+items.length+' · '+percent+'%' : 'У игры нет достижений.';
     if (items.length) {
       const bar=el('progress');
@@ -232,10 +238,10 @@ achievementsPanel.ontoggle=async ()=>{
       bar.setAttribute('aria-label','Полученные достижения');
       count.append(bar);
     }
-    const perfect=items.length>0 && unlocked===items.length;
-    completionCache.set(user.id+':'+editing.id,{perfect,until:Date.now()+300000});
+    const summary={unlocked,total:items.length};
+    completionCache.set(user.id+':'+editing.id,{summary,until:Date.now()+300000});
     const article=document.querySelector('.card[data-entry="'+editing.id+'"]');
-    if (article) showDiamond(article,perfect);
+    if (article) showAchievementProgress(article,summary);
     for (const item of items.sort((a,b)=>Number(a.unlocked)-Number(b.unlocked))) {
       const row=el('li');
       const art=el('span','✦','achievement-art');
