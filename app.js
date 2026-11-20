@@ -139,7 +139,20 @@ function card(game) {
   }
   const body=el('div',null,'card-body');
   const head=el('div',null,'card-head');
-  head.append(button(game.title,()=>openEditor(game,false),'card-title'),el('span',data.statuses[game.status],'status '+game.status));
+  const status=el('select',null,'status '+game.status);
+  status.setAttribute('aria-label','Статус игры '+game.title);
+  for (const [value,label] of Object.entries(data.statuses)) status.add(new Option(label,value));
+  status.value=game.status;
+  status.onchange=async ()=>{
+    status.disabled=true;
+    try { await data.save(game.id,{status:status.value}); await refresh(); }
+    catch(error){status.value=game.status; feedback(error);}
+    finally{status.disabled=false;}
+  };
+  article.onclick=event=>{
+    if (!event.target.closest('button, select, option')) openEditor(game,false);
+  };
+  head.append(button(game.title,()=>openEditor(game,false),'card-title'),status);
   const step=el('div',null,'step');
   if (game.nextStep) {
     const actions=el('div',null,'actions');
@@ -274,20 +287,29 @@ function openEditor(game,onlyStep) {
   achievementsPanel.open=false;
   achievementsPanel.hidden=onlyStep || !data.hasAchievements(game);
   form.reset(); editing=game; stepOnly=onlyStep;
-  $('#edit-title').textContent=onlyStep?game.title:game?'Карточка игры':'Новая игра';
+  $('#edit-title').textContent=game?.title || 'Новая игра';
   $('#game-fields').hidden=onlyStep;
   $('#remove').hidden=!game||onlyStep;
   form.querySelector('.error').textContent='';
   edit.title.value=game?.title || ''; edit.title.disabled=Boolean(game); edit.title.required=!game;
-  edit.status.value=game?.status||'planned'; edit.playtimeMinutes.value=game?.playtimeMinutes??0;
+  const cover=$('#edit-cover'), meta=$('#edit-meta');
+  cover.hidden=!game?.steamAppId;
+  cover.onerror=()=>{cover.hidden=true;};
+  if(game?.steamAppId) cover.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/'+game.steamAppId+'/header.jpg';
+  meta.hidden=!game?.steamAppId;
+  meta.textContent=game?.steamAppId?'Время в игре · '+hours(game.playtimeMinutes):'';
+  edit.title.closest('label').hidden=Boolean(game);
+  edit.playtimeMinutes.closest('label').hidden=Boolean(game?.steamAppId);
+  edit.status.value=game?.status||'unassigned'; edit.playtimeMinutes.value=game?.playtimeMinutes??0;
   edit.playtimeMinutes.disabled=Boolean(game?.steamAppId);
   edit.rating.value=game?.rating??''; edit.completedAt.value=game?.completedAt||'';
   edit.completedAt.max=today(); edit.completedAt.disabled=edit.status.value!=='completed';
+  edit.completedAt.closest('label').hidden=edit.completedAt.disabled;
   edit.notes.value=game?.notes||''; edit.nextStep.value=game?.nextStep||'';
   dialog.showModal();
   (onlyStep?edit.nextStep:game?edit.status:edit.title).focus();
 }
-edit.status.onchange=()=>{ edit.completedAt.disabled=edit.status.value!=='completed';if(edit.completedAt.disabled) edit.completedAt.value=''; };
+edit.status.onchange=()=>{ edit.completedAt.disabled=edit.status.value!=='completed';edit.completedAt.closest('label').hidden=edit.completedAt.disabled;if(edit.completedAt.disabled) edit.completedAt.value=''; };
 $('#add').onclick=()=>openEditor(null,false);
 const steamDialog=$('#steam-dialog');
 const steamForm=$('#steam-form');

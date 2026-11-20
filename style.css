@@ -38,3 +38,5 @@ dialog{color:var(--ink);background:var(--surface);border:1px solid #545b68;borde
 .locked .achievement-art img{filter:saturate(.55)}
 #achievement-list small,#achievement-list .earned{display:block;margin-top:4px}
 #achievement-list small{color:#c6dcf0}
+
+.card{cursor:pointer}.card-head select.status{max-width:45%;cursor:pointer}.pair:has(label[hidden]){grid-template-columns:1fr}#edit-cover{width:100%;aspect-ratio:460/215;object-fit:cover;border-radius:10px}#edit-meta{color:var(--muted);font-size:14px}

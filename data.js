@@ -1,7 +1,7 @@
 import demoAchievements from './demo-achievements.js';
 
 export const demo = location.hostname.endsWith('.github.io') || new URLSearchParams(location.search).get('demo') === '1';
-export const statuses = { planned:'Планирую', playing:'Играю', completed:'Пройдена', paused:'Отложена', dropped:'Брошена' };
+export const statuses = { unassigned:'Без статуса', planned:'Планирую', playing:'Играю', completed:'Пройдена', paused:'Отложена', dropped:'Брошена' };
 const key = 'savepoint.game-collection.demo.v1';
 // Fixed sample activity, including on browsers that already have a saved demo collection.
 const demoActivity = {
