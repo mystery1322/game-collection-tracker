@@ -53,6 +53,7 @@ export async function testDatabase(t) {
     await db.query(await readFile(new URL('../db/migrations/002_next_step.sql',import.meta.url),'utf8'));
     await db.query(await readFile(new URL('../db/migrations/003_last_played.sql',import.meta.url),'utf8'));
     await db.query(await readFile(new URL('../db/migrations/004_steam_login.sql',import.meta.url),'utf8'));
+    await db.query(await readFile(new URL('../db/migrations/005_unassigned_status.sql',import.meta.url),'utf8'));
     await db.query(await roleSql(appPassword));
   });
   return new Pool({...config,user:'game_collection_app',password:appPassword,database:'game_collection'});

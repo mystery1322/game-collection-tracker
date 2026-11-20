@@ -245,7 +245,7 @@ test('HTTP API и PostgreSQL 18', async t => {
       await ageRun();
       await a('POST','/steam/sync',200);
       const recent=await a('GET','/collection?sort=recent&pageSize=1',200);
-      const unplayed=await a('GET','/collection?unplayed=true&status=planned&pageSize=1',200);
+      const unplayed=await a('GET','/collection?unplayed=true&status=unassigned&pageSize=1',200);
       assert.equal(unplayed.total,1);
       assert.equal(unplayed.items[0].steamAppId,'23');
       assert.equal((await a('GET','/collection?unplayed=true&q=xyz',200)).total,0);

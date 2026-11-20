@@ -42,6 +42,6 @@ export async function statistics(db, user) {
   return { hasSteamImport: row.hasSteamImport, totalGames: Number(row.total_games), completionPercent: Number(row.completion_percent),
     totalPlaytimeMinutes: Number(row.total_playtime_minutes),
     averageRating: row.average_rating === null ? null : Number(row.average_rating),
-    byStatus: Object.fromEntries(['planned','playing','completed','paused','dropped'].map(status =>
-      [status, Number(row[status + '_games'])])), topGames: row.topGames };
+    byStatus: { unassigned: Number(row.total_games) - ['planned','playing','completed','paused','dropped'].reduce((sum,key)=>sum+Number(row[key+'_games']),0), ...Object.fromEntries(['planned','playing','completed','paused','dropped'].map(status =>
+      [status, Number(row[status + '_games'])])) }, topGames: row.topGames };
 }

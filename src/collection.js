@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { ApiError, fields, invalid, positiveId, string, transaction } from './lib.js';
 import { entry, list } from './repositories/collection.js';
 
-const statuses = ['planned', 'playing', 'completed', 'paused', 'dropped'];
+const statuses = ['unassigned', 'planned', 'playing', 'completed', 'paused', 'dropped'];
 const editable = ['status', 'rating', 'notes', 'nextStep', 'completedAt', 'playtimeMinutes'];
 
 function changes(body, current) {
@@ -57,7 +57,7 @@ export function collectionRoutes(pool, getAchievements) {
     fields(req.body, ['title', ...editable]);
     const title = string(req.body.title, 255, 'Название').trim();
     if (!title) invalid('Введите название игры.');
-    const game = changes(req.body, { status: 'planned', rating: null, notes: '', nextStep: '', completedAt: null, playtimeMinutes: 0 });
+    const game = changes(req.body, { status: 'unassigned', rating: null, notes: '', nextStep: '', completedAt: null, playtimeMinutes: 0 });
     const user = req.session.userId;
     const result = await transaction(pool, async db => {
       const created = await db.query('INSERT INTO games(title,created_by) VALUES ($1,$2) RETURNING id', [title,user]);
