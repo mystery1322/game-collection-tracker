@@ -12,7 +12,9 @@ test('HTTP API и PostgreSQL 18', async t => {
   let mode = 'ok';
   let releaseImport, fetchStarted;
   const readSteam = steamLibrary('test-only', async (url, options) => {
-    assert.equal(JSON.parse(url.searchParams.get('input_json')).steamid, '76561198000000000');
+    const query = JSON.parse(url.searchParams.get('input_json'));
+    assert.equal(query.steamid, '76561198000000000');
+    assert.equal(query.skip_unvetted_apps, false);
     assert.equal(options.headers['x-webapi-key'], 'test-only');
     if (mode === 'timeout') throw new DOMException('timeout','TimeoutError');
     if (mode === 'private') return Response.json({ response: {} });

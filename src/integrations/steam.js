@@ -29,7 +29,9 @@ export function steamLibrary(apiKey, fetchImpl = fetch) {
   return async steamId => {
     if (!apiKey) throw new ApiError(503, 'steam_unconfigured', 'Для импорта нужен серверный ключ Steam Web API.');
     const url = new URL('https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/');
-    url.searchParams.set('input_json', JSON.stringify({ steamid: steamId, include_appinfo: true, include_played_free_games: true }));
+    url.searchParams.set('input_json', JSON.stringify({
+      steamid: steamId, include_appinfo: true, include_played_free_games: true, skip_unvetted_apps: false
+    }));
     // Valve accepts the Web API key in a header, keeping it out of URLs.
     let data;
     try {
