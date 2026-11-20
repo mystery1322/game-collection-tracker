@@ -7,11 +7,13 @@ test('бриллиант требует хотя бы одного достиж�
   const get=steamAchievements('test',async ()=>Response.json({
     playerstats:{steamID:'player',success:true,achievements}
   }));
-  assert.deepEqual(await get('player','10',true),{perfect:false});
-  achievements.push({apiname:'first',achieved:1});
-  assert.deepEqual(await get('player','10',true),{perfect:true});
+  assert.deepEqual(await get('player','10',true),{total:0,unlocked:0,perfect:false});
+  achievements.push({apiname:'first',achieved:0});
+  assert.deepEqual(await get('player','10',true),{total:1,unlocked:0,perfect:false});
+  achievements[0].achieved=1;
+  assert.deepEqual(await get('player','10',true),{total:1,unlocked:1,perfect:true});
   achievements.push({apiname:'second',achieved:0});
-  assert.deepEqual(await get('player','10',true),{perfect:false});
+  assert.deepEqual(await get('player','10',true),{total:2,unlocked:1,perfect:false});
 });
 
 test('значок и глобальная доля сопоставляются по идентификатору достижения', async () => {

@@ -51,7 +51,9 @@ export function hasAchievements(game) {
 export async function achievements(game, summary=false) {
   if (!demo) return api('/collection/'+game.id+'/achievements'+(summary?'?view=summary':''));
   const items=demoAchievements[game.steamAppId] ?? [];
-  return summary ? {perfect:items.length>0 && items.every(item=>item.unlocked)} : [...items];
+  if (!summary) return [...items];
+  const unlocked=items.filter(item=>item.unlocked).length;
+  return {total:items.length,unlocked,perfect:items.length>0 && unlocked===items.length};
 }
 export function neverPlayed(game) {
   return Boolean(game.steamAppId) && game.playtimeMinutes === 0 && !game.lastPlayedAt;

@@ -17,7 +17,10 @@ export function steamAchievements(key, fetchImpl = fetch) {
       const items = playerstats.achievements ?? [];
       if (!Array.isArray(items)) throw Error();
       if (items.some(item=>!item.apiname || ![0,1].includes(item.achieved))) throw Error();
-      if (summary) return { perfect: items.length>0 && items.every(item=>item.achieved===1) };
+      if (summary) {
+        const unlocked=items.filter(item=>item.achieved===1).length;
+        return { total:items.length, unlocked, perfect:items.length>0 && unlocked===items.length };
+      }
       if (!items.length) return [];
       const [schema,global] = await Promise.all([
         read('GetSchemaForGame/v2',{appid:appId,l:'russian'}).catch(()=>null),
