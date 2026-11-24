@@ -1,6 +1,11 @@
 import * as data from './data.js';
 
 const $ = selector => document.querySelector(selector);
+if (!data.demo) {
+  for (const link of document.querySelectorAll('nav a, a.brand')) {
+    link.href = link.hash === '#statistics' ? '/statistics' : '/collection';
+  }
+}
 const form = $('#edit-form');
 const edit = form.elements;
 const authForm = $('#auth-form');
@@ -199,11 +204,12 @@ function renderStats(s) {
 }
 async function refresh() {
   const ticket=++request;
-  const statistics=location.hash==='#statistics';
+  const statistics=location.pathname==='/statistics' || location.hash==='#statistics';
   $('#page-title').textContent=statistics?'Моя статистика':'Моя коллекция';
   $('#library').hidden=statistics; $('#stats').hidden=!statistics;
   for (const a of document.querySelectorAll('nav a')) {
-    if(a.hash===(statistics?'#statistics':'#collection')) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current');
+    const activeView = statistics ? 'statistics' : 'collection';
+    if(a.hash==='#'+activeView || a.pathname==='/'+activeView) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current');
   }
   const s=await data.stats();
   if (ticket!==request || !user) return;
