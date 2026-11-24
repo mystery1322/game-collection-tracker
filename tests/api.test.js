@@ -1,52 +1,45 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
-import { randomBytes } from 'node:crypto';
-import { createApp } from '../src/app.js';
-import { steamLibrary } from '../src/integrations/steam.js';
+import { createServer } from 'node:http';
+import { startJava } from './java-server.js';
+import {createHmac,randomBytes,scryptSync} from 'node:crypto';
 import { testDatabase } from './pg-fixture.js';
 
-test('HTTP API и PostgreSQL 18', async t => {
+test('Java HTTP API и PostgreSQL 18', async t => {
   const pool = await testDatabase(t);
   let library = [{ appid: 10, name: 'Test Steam Game', playtime_forever: 80 }];
   let mode = 'ok';
   let releaseImport, fetchStarted;
-  const readSteam = steamLibrary('test-only', async (url, options) => {
-    const query = JSON.parse(url.searchParams.get('input_json'));
-    assert.equal(query.steamid, '76561198000000000');
-    assert.equal(query.skip_unvetted_apps, false);
-    assert.equal(options.headers['x-webapi-key'], 'test-only');
-    if (mode === 'timeout') throw new DOMException('timeout','TimeoutError');
-    if (mode === 'private') return Response.json({ response: {} });
-    if (mode === 'wait') {
-      fetchStarted();
-      await new Promise(resolve => { releaseImport = resolve; });
-    }
-    return Response.json({ response: { game_count: library.length, games: library } });
-  });
-  async function getLibrary(id) {
-    const rows = await readSteam(id);
-    // Simulate a persistence failure after the external response has been validated.
-    if (mode === 'bad_write') rows.push({ appid: 20, title: 'Rollback', minutes: -1, icon: null });
-    return rows;
-  }
-  const origin='http://localhost:3000';
   let providerAccepts=true;
-  const steamLoginFetch=async (url, options)=>{
-    assert.equal(url,'https://steamcommunity.com/openid/login');
-    assert.equal(options.method,'POST');
-    assert.equal(options.body.get('openid.mode'),'check_authentication');
-    return new Response('is_valid:'+providerAccepts+'\n');
-  };
-  const getAchievements=async (steamId, appId)=>{
-    assert.equal(steamId,'76561198000000000');
-    assert.equal(String(appId),'10');
-    return [{name:'Начало',description:'',unlocked:false}];
-  };
-  const { app, store } = createApp({pool,secret:randomBytes(32).toString('hex'),origin,getLibrary,getAchievements,steamLoginFetch});
-  const server = app.listen(0,'127.0.0.1');
-  await once(server,'listening');
-  const base = 'http://127.0.0.1:' + server.address().port + '/api';
+  let achievements=[{apiname:'first',name:'Начало',achieved:0}];
+  const steam=createServer(async (req,res)=>{
+    const url=new URL(req.url,'http://localhost');
+    const json=value=>{res.setHeader('content-type','application/json');res.end(JSON.stringify(value));};
+    if(url.pathname==='/openid'){
+      let body=''; for await(const part of req) body+=part;
+      assert.equal(new URLSearchParams(body).get('openid.mode'),'check_authentication');
+      res.end('is_valid:'+providerAccepts+'\n'); return;
+    }
+    if(url.pathname.includes('GetOwnedGames')){
+      const params=JSON.parse(url.searchParams.get('input_json'));
+      assert.equal(params.steamid,'76561198000000000');
+      assert.equal(params.skip_unvetted_apps,false);
+      assert.equal(req.headers['x-webapi-key'],'test-only');
+      if(mode==='timeout')return;
+      if(mode==='private')return json({response:{}});
+      if(mode==='wait'){fetchStarted();await new Promise(resolve=>{releaseImport=resolve;});}
+      return json({response:{game_count:library.length,games:library}});
+    }
+    if(url.pathname.includes('GetPlayerAchievements'))return json({playerstats:{success:true,steamID:'76561198000000000',achievements}});
+    if(url.pathname.includes('GetSchemaForGame'))return json({game:{availableGameStats:{achievements:[{name:'second',icon:'b.jpg'},{name:'first',icon:'a.jpg'}]}}});
+    if(url.pathname.includes('GetGlobalAchievement'))return json({achievementpercentages:{achievements:[{name:'second',percent:'0'}]}});
+    res.writeHead(404).end();
+  });
+  steam.listen(0,'127.0.0.1');await once(steam,'listening');
+  const secret=randomBytes(32).toString('hex');
+  const server=await startJava(pool,steam.address().port,secret);
+  const base=server.url+'/api';
   function client() {
     let cookie = '';
     return async (method, route, status, body, headers) => {
@@ -63,6 +56,19 @@ test('HTTP API и PostgreSQL 18', async t => {
   let userId, manualId, steamEntry;
   const ageRun = () => pool.query("UPDATE steam_sync_runs SET started_at=started_at-interval '2 minutes' WHERE user_id=$1", [userId]);
   try {
+    await t.test('пароль и действующий сеанс прежнего сервера открывают тот же аккаунт',async()=>{
+      const salt=randomBytes(16).toString('hex'),password='compatibility-test';
+      const hash=scryptSync(password,salt,64,{N:32768,r:8,p:3,maxmem:64*1024*1024}).toString('hex');
+      const email='previous@example.invalid';
+      const {rows:[u]}=await pool.query('INSERT INTO users(email,password_hash,display_name) VALUES ($1,$2,$3) RETURNING id',[email,['scrypt-v1',salt,hash].join('$'),'Прежний аккаунт']);
+      const sid=randomBytes(24).toString('base64url');
+      const signature=createHmac('sha256',secret).update(sid).digest('base64').replace(/=+$/,'');
+      await pool.query("INSERT INTO sessions(sid,sess,expire) VALUES ($1,$2,now()+interval '1 day')",[sid,JSON.stringify({userId:u.id})]);
+      const me=await fetch(base+'/auth/me',{headers:{cookie:'collection.sid='+encodeURIComponent('s:'+sid+'.'+signature)}});
+      assert.equal(me.status,200);assert.equal((await me.json()).id,u.id);
+      const previous=client();
+      assert.equal((await previous('POST','/auth/login',200,{email,password})).id,u.id);
+    });
     await t.test('регистрация, сессия, повторный email и запрещённый источник запроса', async () => {
       await a('GET','/health',200);
       await a('GET','/collection',401);
@@ -128,6 +134,22 @@ test('HTTP API и PostgreSQL 18', async t => {
       assert.equal((await a('GET',path,200))[0].name,'Начало');
       await b('GET',path,404);
       await a('GET','/collection/'+manualId+'/achievements',400);
+    });
+    await t.test('краткий прогресс и значки достижений Java',async()=>{
+      const path='/collection/'+steamEntry+'/achievements';
+      achievements=[];
+      assert.deepEqual(await a('GET',path+'?view=summary',200),{total:0,unlocked:0,perfect:false});
+      achievements=[{apiname:'first',achieved:1}];
+      assert.deepEqual(await a('GET',path+'?view=summary',200),{total:1,unlocked:1,perfect:true});
+      achievements.push({apiname:'second',achieved:0});
+      assert.deepEqual(await a('GET',path+'?view=summary',200),{total:2,unlocked:1,perfect:false});
+      assert.deepEqual((await a('GET',path,200)).map(x=>[x.icon,x.globalPercent]),[['a.jpg',null],['b.jpg',0]]);
+    });
+    await t.test('обе страницы клиентского представления открываются напрямую',async()=>{
+      for(const path of ['/collection','/statistics']){
+        const r=await fetch(server.url+path);assert.equal(r.status,200);
+        assert.match(await r.text(),/Savepoint/);
+      }
     });
     await t.test('повторный импорт обновляет минуты и сохраняет личные поля', async () => {
       await ageRun();
@@ -263,8 +285,9 @@ test('HTTP API и PostgreSQL 18', async t => {
       assert.equal(Date.parse((await b('GET','/collection?sort=recent',200)).items[0].lastPlayedAt),1680000000000);
     });
   } finally {
-    await new Promise(resolve=>server.close(resolve));
-    await store.close();
+    await server.close();
+    steam.closeAllConnections();
+    await new Promise(resolve=>steam.close(resolve));
     await pool.end();
   }
 });
