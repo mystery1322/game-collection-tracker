@@ -3,6 +3,7 @@ services:
     name: savepoint-games
     runtime: docker
     plan: free
+    region: frankfurt
     healthCheckPath: /api/health
     envVars:
       - key: SESSION_SECRET
