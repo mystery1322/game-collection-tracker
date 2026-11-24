@@ -16,12 +16,12 @@ public final class Server {
     private final ExecutorService executor=Executors.newVirtualThreadPerTaskExecutor();
     private final Path assets;
     Server(Map<String,String> env,Steam steam)throws Exception{
-        int port=Integer.parseInt(env.getOrDefault("PORT","3000"));origin=env.getOrDefault("APP_ORIGIN","http://localhost:"+port);
+        int port=Integer.parseInt(env.getOrDefault("PORT","3000"));origin=env.getOrDefault("APP_ORIGIN",env.getOrDefault("RENDER_EXTERNAL_URL","http://localhost:"+port));
         var secret=env.get("SESSION_SECRET");
         if(secret==null||secret.length()<32||env.getOrDefault("PGPASSWORD","").isEmpty())throw new IllegalArgumentException("Проверьте SESSION_SECRET и PGPASSWORD.");
         this.steam=steam;pg=new Pg(env);pg.tx(db->rows(db,"SELECT 1 FROM user_statistics LIMIT 0"));
         accounts=new Accounts(pg,steam,origin,secret);sync=new Sync(pg,steam);assets=Path.of("public").toRealPath();
-        http=HttpServer.create(new InetSocketAddress("127.0.0.1",port),64);http.setExecutor(executor);http.createContext("/",this::handle);
+        http=HttpServer.create(new InetSocketAddress(env.getOrDefault("BIND_HOST","127.0.0.1"),port),64);http.setExecutor(executor);http.createContext("/",this::handle);
     }
     private void handle(HttpExchange x){
         try(x){
@@ -56,6 +56,12 @@ public final class Server {
         if(r.path.startsWith("/api/auth/")){accounts.routes(r);return;}
         int user=accounts.user(r);
         if(r.is("GET","/api/statistics"))r.send(200,pg.tx(db->Library.stats(db,user)));
+        else if(r.is("GET","/api/queue"))r.send(200,pg.tx(db->Library.queue(db,user,false)));
+        else if(r.method.equals("PATCH")&&r.path.startsWith("/api/queue/")){
+            int id=positive(r.path.substring("/api/queue/".length()),Integer.MAX_VALUE);
+            var body=r.body();fields(body,"direction");String direction=str(body,"direction",2,4);
+            pg.tx(db->{Library.moveQueue(db,user,id,direction);return null;});r.send(204,null);
+        }
         else if(r.is("GET","/api/collection"))r.send(200,pg.tx(db->Library.list(db,user,r.q)));
         else if(r.is("POST","/api/collection")){var b=r.body();r.send(201,pg.tx(db->Library.save(db,user,null,b)));}
         else if(r.path.startsWith("/api/collection/")){
@@ -86,7 +92,9 @@ public final class Server {
     }
     void stop(){http.stop(1);executor.shutdown();}
     public static void main(String[] args)throws Exception{
-        var env=settings();var server=new Server(env,new Steam(env.get("STEAM_API_KEY")));
+        var env=settings();
+        if(env.containsKey("NEON_DATABASE_URL"))CloudDatabase.configure(env);
+        var server=new Server(env,new Steam(env.get("STEAM_API_KEY")));
         Runtime.getRuntime().addShutdownHook(new Thread(server::stop));server.http.start();
         System.out.println("Savepoint Java — http://127.0.0.1:"+server.http.getAddress().getPort());
     }

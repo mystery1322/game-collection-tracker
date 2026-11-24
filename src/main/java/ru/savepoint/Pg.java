@@ -10,7 +10,8 @@ final class Pg {
     private final String url, user, password;
     Pg(Map<String,String> settings) {
         url = "jdbc:postgresql://" + settings.getOrDefault("PGHOST","127.0.0.1") + ":" +
-            settings.getOrDefault("PGPORT","5432") + "/" + settings.getOrDefault("PGDATABASE","game_collection");
+            settings.getOrDefault("PGPORT","5432") + "/" + settings.getOrDefault("PGDATABASE","game_collection") +
+            ("verify-full".equals(settings.get("PGSSLMODE")) ? "?sslmode=verify-full&sslfactory=org.postgresql.ssl.DefaultJavaSSLFactory" : "");
         user = settings.getOrDefault("PGUSER","game_collection_app");
         password = settings.get("PGPASSWORD");
     }

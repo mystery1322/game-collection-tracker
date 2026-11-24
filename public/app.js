@@ -220,6 +220,9 @@ async function refresh() {
   $('#fatal').textContent=''; $('#message').textContent='';
   renderStats(s);
   if (!result) return;
+  $('#lucky').disabled=!result.total;
+  if ($('#play-queue').open) await renderQueue();
+  if (ticket!==request || !user) return;
   const last=Math.max(1,Math.ceil(result.total/params.pageSize));
   if (params.page>last) {params.page=last; return refresh();}
   const cards=result.items.map(card);
@@ -316,6 +319,35 @@ function openEditor(game,onlyStep) {
   (onlyStep?edit.nextStep:game?edit.status:edit.title).focus();
 }
 edit.status.onchange=()=>{ edit.completedAt.disabled=edit.status.value!=='completed';edit.completedAt.closest('label').hidden=edit.completedAt.disabled;if(edit.completedAt.disabled) edit.completedAt.value=''; };
+let queueVersion=0;
+async function renderQueue() {
+  const version=++queueVersion;
+  const rows=await data.queue();
+  if(version!==queueVersion || !user) return;
+  $('#queue-empty').hidden=rows.length>0;
+  $('#queue-list').replaceChildren(...rows.map((game,index)=>{
+    const row=el('li'),name=el('span',game.title),actions=el('span',null,'queue-actions');
+    for(const [direction,icon,label,end] of [['up','↑','Выше',index===0],['down','↓','Ниже',index===rows.length-1]]){
+      const control=button(icon,async()=>{
+        for(const b of $('#queue-list').querySelectorAll('button')) b.disabled=true;
+        try {await data.moveQueue(game.id,direction);} catch(error){feedback(error);}
+        try {await renderQueue();} catch(error){feedback(error);}
+      });
+      control.disabled=end;control.setAttribute('aria-label',label+': '+game.title);
+      actions.append(control);
+    }
+    row.append(name,actions);return row;
+  }));
+}
+$('#play-queue').ontoggle=()=>{if(user && $('#play-queue').open) renderQueue().catch(feedback);};
+$('#lucky').onclick=async event=>{
+  const target=event.currentTarget;target.disabled=true;
+  try {
+    const game=await data.randomGame({...params,q:$('#search').value.trim()});
+    if(game) openEditor(game,false);
+    else $('#message').textContent='По выбранным условиям игр нет.';
+  }catch(error){feedback(error);}finally{target.disabled=false;}
+};
 $('#add').onclick=()=>openEditor(null,false);
 const steamDialog=$('#steam-dialog');
 const steamForm=$('#steam-form');

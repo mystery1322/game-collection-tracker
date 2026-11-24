@@ -73,6 +73,27 @@ final class Library {
         var removed=one(db,"DELETE FROM user_games WHERE user_id=$1 AND id=$2 RETURNING game_id",user,id);
         rows(db,"DELETE FROM games WHERE created_by=$1 AND id=$2",user,removed.get("game_id").getAsInt());
     }
+    static JsonArray queue(Connection db,int user,boolean lock)throws SQLException {
+        return rows(db,"SELECT ug.id,g.title,coalesce(ug.queue_rank,ug.id) AS rank"+JOIN+
+            "WHERE ug.user_id=$1 AND ug.status='planned' ORDER BY rank,ug.id"+(lock?" FOR UPDATE OF ug":""),user);
+    }
+    static void moveQueue(Connection db,int user,int id,String direction)throws SQLException {
+        if(!Set.of("up","down").contains(direction))throw invalid("Выберите направление.");
+        // Serialize moves before taking the ordered snapshot.
+        one(db,"SELECT id FROM users WHERE id=$1 FOR NO KEY UPDATE",user);
+        var games=queue(db,user,true);
+        for(int i=0;i<games.size();i++){
+            var game=games.get(i).getAsJsonObject();
+            if(game.get("id").getAsInt()!=id)continue;
+            int j=i+(direction.equals("up")?-1:1);
+            if(j<0||j>=games.size())return;
+            var other=games.get(j).getAsJsonObject();
+            rows(db,"UPDATE user_games SET queue_rank=CASE WHEN id=$2 THEN $4::integer ELSE $5::integer END WHERE user_id=$1 AND id IN ($2,$3)",
+                user,id,other.get("id").getAsInt(),other.get("rank").getAsInt(),game.get("rank").getAsInt());
+            return;
+        }
+        throw missing();
+    }
     static JsonObject stats(Connection db,int user) throws SQLException{
         var s=one(db,"SELECT *,EXISTS(SELECT 1 FROM steam_sync_runs WHERE user_id=$1 AND status='success') AS imported FROM user_statistics WHERE user_id=$1",user);
         var counts=new JsonObject();int assigned=0;

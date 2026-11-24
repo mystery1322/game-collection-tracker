@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: savepoint-games
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: NEON_DATABASE_URL
+        sync: false

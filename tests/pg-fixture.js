@@ -1,6 +1,6 @@
 import { execFile, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createServer } from 'node:net';
@@ -48,12 +48,13 @@ export async function testDatabase(t) {
   }
   await admin('postgres', db => db.query('CREATE DATABASE game_collection'));
   const appPassword = randomBytes(32).toString('hex');
+  const java=process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME,'bin','java') : 'java';
+  const cp=['target/classes','target/test-classes','target/dependency/*'].join(path.delimiter);
+  await execute(java,['-cp',cp,'ru.savepoint.TestServer','migrate'],{
+    windowsHide:true,env:{...process.env,PGHOST:config.host,PGPORT:String(port),PGUSER:config.user,
+      PGDATABASE:'game_collection',PGPASSWORD:password}
+  });
   await admin('game_collection', async db => {
-    await db.query(await readFile(new URL('../db/migrations/001_initial_schema.sql',import.meta.url),'utf8'));
-    await db.query(await readFile(new URL('../db/migrations/002_next_step.sql',import.meta.url),'utf8'));
-    await db.query(await readFile(new URL('../db/migrations/003_last_played.sql',import.meta.url),'utf8'));
-    await db.query(await readFile(new URL('../db/migrations/004_steam_login.sql',import.meta.url),'utf8'));
-    await db.query(await readFile(new URL('../db/migrations/005_unassigned_status.sql',import.meta.url),'utf8'));
     await db.query(await roleSql(appPassword));
   });
   return new Pool({...config,user:'game_collection_app',password:appPassword,database:'game_collection'});

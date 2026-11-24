@@ -15,6 +15,8 @@ const examples = [
   ['Hades','1145360','playing',980,10,'Взять щит и попробовать новый аспект.'],
   ['Hollow Knight','367520','playing',1130,10,'Вернуться к картографу в Городе слёз.'],
   ['Outer Wilds','753640','planned',0,null,''],
+  ['A Short Hike','1055540','planned',0,null,''],
+  ['Chants of Sennaar','1931770','planned',0,null,''],
   ['Portal 2','620','completed',530,9,'']
 ];
 function readGames() {
@@ -75,6 +77,29 @@ export async function list({q,status,sort,page,pageSize,unplayed}) {
   };
   matches.sort((a,b)=>compare[sort](a,b) || a.id-b.id);
   return {items:matches.slice((page-1)*pageSize,page*pageSize),total:matches.length};
+}
+export async function queue() {
+  if (!demo) return api('/queue');
+  return readGames().filter(g=>g.status==='planned').sort((a,b)=>(a.queueRank??a.id)-(b.queueRank??b.id));
+}
+export async function moveQueue(id,direction) {
+  if (!demo) return api('/queue/'+id,'PATCH',{direction});
+  const games=readGames();
+  const ordered=games.filter(g=>g.status==='planned').sort((a,b)=>(a.queueRank??a.id)-(b.queueRank??b.id));
+  const i=ordered.findIndex(g=>g.id===id);
+  const neighbour=ordered[i+(direction==='up'?-1:1)];
+  if (i<0 || !neighbour) return;
+  const game=ordered[i];
+  [game.queueRank,neighbour.queueRank]=[neighbour.queueRank??neighbour.id,game.queueRank??game.id];
+  localStorage.setItem(key,JSON.stringify(games));
+}
+export async function randomGame(filters) {
+  const query={...filters,page:1,pageSize:1};
+  const first=await list(query);
+  if (!first.total) return null;
+  const page=1+Math.floor(Math.random()*first.total);
+  if(page===1) return first.items[0];
+  return (await list({...query,page})).items[0]??null;
 }
 export async function stats() {
   if (!demo) return api('/statistics');

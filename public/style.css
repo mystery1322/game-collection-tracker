@@ -40,3 +40,11 @@ dialog{color:var(--ink);background:var(--surface);border:1px solid #545b68;borde
 #achievement-list small{color:#c6dcf0}
 
 .card{cursor:pointer}.card-head select.status{max-width:45%;cursor:pointer}.pair:has(label[hidden]){grid-template-columns:1fr}#edit-cover{width:100%;aspect-ratio:460/215;object-fit:cover;border-radius:10px}#edit-meta{color:var(--muted);font-size:14px}
+
+#play-queue{margin:12px 0 16px;padding:12px 16px;border:1px solid #37404b;border-radius:9px}
+#play-queue summary{cursor:pointer;font-weight:600}
+#queue-list{padding-left:2em;max-height:22rem;overflow:auto}
+#queue-list li{padding:.4em 0;border-bottom:1px solid #303844}
+#queue-list li::marker{color:#c9ed8c;font-weight:bold}
+.queue-actions{display:inline-flex;gap:6px;margin-left:1em}
+.queue-actions button{padding:2px 10px}

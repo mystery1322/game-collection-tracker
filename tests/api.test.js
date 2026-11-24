@@ -101,6 +101,18 @@ test('Java HTTP API и PostgreSQL 18', async t => {
       assert.equal(stats.totalPlaytimeMinutes,120);
       assert.equal(stats.topGames[0].id,manualId);
     });
+    await t.test('очередь прохождения сохраняет порядок и принадлежит игроку',async()=>{
+      const first=await a('POST','/collection',201,{title:'First',status:'planned'});
+      const next=await a('POST','/collection',201,{title:'Next',status:'planned'});
+      const ids=async()=>(await a('GET','/queue',200)).map(g=>g.id);
+      assert.deepEqual(await ids(),[first.id,next.id]);
+      await b('PATCH','/queue/'+next.id,404,{direction:'up'});
+      await a('PATCH','/queue/'+next.id,204,{direction:'up'});
+      assert.deepEqual(await ids(),[next.id,first.id]);
+      await a('PATCH','/collection/'+next.id,200,{status:'playing'});
+      assert.deepEqual(await ids(),[first.id]);
+      await a('DELETE','/collection/'+first.id,204);await a('DELETE','/collection/'+next.id,204);
+    });
     await t.test('изоляция двух пользователей, поиск и страницы', async () => {
       assert.equal((await b('GET','/collection',200)).total,0);
       for (const method of ['GET','PATCH','DELETE']) await b(method,'/collection/'+manualId,404,method==='PATCH'?{rating:5}:undefined);

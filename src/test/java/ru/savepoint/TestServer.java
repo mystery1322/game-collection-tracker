@@ -6,6 +6,12 @@ import com.google.gson.JsonArray;
 public final class TestServer {
     public static void main(String[] args)throws Exception{
         var env=System.getenv();
+        if(args.length==1 && args[0].equals("migrate")){
+            var pg=new Pg(env);
+            CloudDatabase.migrate(pg);
+            CloudDatabase.migrate(pg);
+            return;
+        }
         String origin="http://127.0.0.1:"+Integer.parseInt(env.get("TEST_STEAM_PORT"));
         var steam=new Steam("test-only",origin,origin+"/openid"){
             @Override JsonArray library(String sid){

@@ -1,0 +1,10 @@
+**
+!pom.xml
+!src/
+!src/main/
+!src/main/**
+!public/
+!public/**
+!db/
+!db/migrations/
+!db/migrations/**
